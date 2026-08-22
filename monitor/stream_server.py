@@ -1,88 +1,73 @@
 import warnings
+warnings.filterwarnings('ignore', category=FutureWarning)
 try:
     import onnxruntime
     onnxruntime.set_default_logger_severity(3)
 except Exception:
     pass
-warnings.filterwarnings('ignore', category=FutureWarning)
-import argparse
-import cv2
-import json
-import numpy as np
+
 import os
-import re
 import sys
 import time
+import json
+import argparse
 import threading
+import cv2
+import numpy as np
+from flask import Flask, Response, jsonify, request
+# from flask_cors import CORS
 
-# Prevent OSError [Errno 22] when running as Windows background process
-class SafeWriter:
-    def __init__(self, original_stream):
-        self.original_stream = original_stream
-    def write(self, text):
-        try:
-            if self.original_stream:
-                self.original_stream.write(text)
-                self.original_stream.flush()
-        except Exception:
-            pass
-    def flush(self):
-        try:
-            if self.original_stream:
-                self.original_stream.flush()
-        except Exception:
-            pass
-
-sys.stdout = SafeWriter(sys.stdout)
-sys.stderr = SafeWriter(sys.stderr)
-
-from flask import Flask, Response, jsonify, request, render_template_string
+# Tambahkan direktori root 'monitor' ke sys.path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from detectors.person_detector import PersonDetector
-try:
-    from recognizers.face_recognizer import InsightFaceRecognizer as FaceRecognizerModule
-    print("[INFO StreamServer] Menggunakan modul Face Recognition Modern berbasis InsightFace (SCRFD + ArcFace).")
-except Exception as e:
-    from detectors.face_recognizer_deprecated import FaceRecognizerModule
-    print(f"[WARNING StreamServer] InsightFace belum tersedia, beralih ke modul lama: {e}")
 from rules.rule_zone_presence import RuleZonePresence
 from visualizer import Visualizer
 
-CONFIG_PATH = "config.json"
+try:
+    from recognizers.face_recognizer import InsightFaceRecognizer as FaceRecognizerModule
+    FACE_RECOGNIZER_TYPE = "InsightFace"
+except ImportError:
+    from detectors.face_recognizer import HaarFaceRecognizer as FaceRecognizerModule
+    FACE_RECOGNIZER_TYPE = "HaarCascade"
 
 app = Flask(__name__)
+# CORS(app)
 
-# Global variables for thread safety
-lock = threading.Lock()
-current_source = None
-detector = None
-face_recognizer = None
-rule_engine = None
-visualizer = None
+# Global Variables untuk Sharing Stream
 latest_frame = None
 latest_clean_frame = None
 latest_results = {}
 current_fps = 0.0
 is_running = True
+lock = threading.Lock()
+
+# Global Instances
 config_data = {}
+detector = None
+rule_engine = None
+face_recognizer = None
+visualizer = None
+current_source = None
 
 def load_config():
-    global config_data
-    if os.path.exists(CONFIG_PATH):
-        try:
-            with open(CONFIG_PATH, "r") as f:
-                config_data = json.load(f)
-                return config_data
-        except Exception as e:
-            print(f"[ERROR StreamServer] Gagal membaca {CONFIG_PATH}: {e}")
-    config_data = {"source": "f.mp4", "model_name": "yolo11n.pt", "confidence": 0.13, "imgsz": 640}
-    return config_data
+    """Memuat file konfigurasi zona meja dan parameter engine."""
+    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+    if not os.path.exists(config_path):
+        print(f"[ERROR StreamServer] File konfigurasi tidak ditemukan: {config_path}")
+        sys.exit(1)
+    with open(config_path, "r") as f:
+        return json.load(f)
 
-def init_engine(source_override=None):
-    global current_source, detector, face_recognizer, rule_engine, visualizer, config_data
-    config_data = load_config()
-    current_source = source_override if source_override is not None else config_data.get("source", "f.mp4")
+def init_engine(source=None):
+    """Inisialisasi model YOLO, Face Recognizer, dan Rule Engine Spasial."""
+    global config_data, detector, rule_engine, face_recognizer, visualizer, current_source
     
+    config_data = load_config()
+    current_source = source if source is not None else config_data.get("source", 0)
+    
+    print(f"[INFO StreamServer] Menggunakan modul Face Recognition Modern berbasis {FACE_RECOGNIZER_TYPE} (SCRFD + ArcFace).")
+
     # Inisialisasi Detektor Person
     model_name = config_data.get("model_name", "yolo11n.pt")
     detector = PersonDetector(
@@ -109,19 +94,21 @@ def video_processing_thread():
     global latest_frame, latest_clean_frame, latest_results, current_fps, is_running, current_source
     
     while is_running:
-        cap_source = int(current_source) if str(current_source).isdigit() else current_source
+        opened_source = current_source
+        cap_source = int(opened_source) if str(opened_source).isdigit() else opened_source
         if isinstance(cap_source, str) and not cap_source.startswith("rtsp://") and not cap_source.startswith("http://"):
             if not os.path.isabs(cap_source):
                 monitor_dir = os.path.dirname(os.path.abspath(__file__))
                 candidate = os.path.join(monitor_dir, cap_source)
                 if os.path.exists(candidate):
                     cap_source = candidate
+
         cap = cv2.VideoCapture(cap_source)
         if hasattr(cv2, 'CAP_PROP_BUFFERSIZE'):
             cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         
         if not cap.isOpened():
-            print(f"[ERROR StreamServer] Gagal membuka sumber video: {current_source}. Mencoba lagi...")
+            print(f"[ERROR StreamServer] Gagal membuka sumber video: {cap_source}. Mencoba lagi...")
             time.sleep(2)
             continue
 
@@ -132,12 +119,17 @@ def video_processing_thread():
         frame_count = 0
         prev_time = time.time()
         
-        print(f"[INFO StreamServer] Memulai pemrosesan stream dari: {current_source}")
+        print(f"[INFO StreamServer] Memulai pemrosesan stream dari: {opened_source} ({cap_source})")
 
         cached_detections = []
         cached_results = {}
 
         while is_running and cap.isOpened():
+            # Deteksi pergantian sumber video secara realtime
+            if current_source != opened_source:
+                print(f"[INFO StreamServer] Sumber video berganti: {opened_source} -> {current_source}. Memuat ulang VideoCapture...")
+                break
+
             loop_start = time.time()
             ret, frame = cap.read()
             if not ret or frame is None:
@@ -175,7 +167,6 @@ def video_processing_thread():
             # Render Visualizer
             annotated_frame = visualizer.render(frame, cached_results, fps=current_fps)
             
-            
             ret_jpg, jpeg = cv2.imencode('.jpg', annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
             if ret_jpg:
                 with lock:
@@ -192,50 +183,42 @@ def video_processing_thread():
                     time.sleep(target_frame_time - proc_time)
 
         cap.release()
-        print(f"[INFO StreamServer] Stream selesai/terputus dari: {current_source}")
-        time.sleep(1)
+        print(f"[INFO StreamServer] Stream selesai/dilepas dari: {opened_source}")
+        time.sleep(0.5)
 
-def generate_mjpeg_stream():
-    """Generator multipart MJPEG stream untuk tag <img> browser"""
-    global latest_frame
+def generate_frames():
+    """Generator Frame MJPEG untuk dikirim ke Browser via HTTP"""
+    global latest_frame, lock
     while is_running:
         with lock:
             if latest_frame is None:
-                time.sleep(0.04)
-                continue
-            frame_data = latest_frame
+                frame_bytes = None
+            else:
+                frame_bytes = latest_frame
         
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame_data + b'\r\n')
-        time.sleep(0.033)
-
-@app.route('/health')
-@app.route('/healthz')
-def health_check():
-    return "OK", 200
+        if frame_bytes is not None:
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+        time.sleep(0.04)
 
 @app.route('/video_feed')
 def video_feed():
-    """Endpoint Stream Video MJPEG Real-Time"""
-    return Response(generate_mjpeg_stream(),
-                    mimetype='multipart/x-mixed-replace; boundary=frame')
+    """Endpoint Stream Video MJPEG Real-time"""
+    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/api/snapshot')
 def api_snapshot():
-    """Endpoint untuk mengambil 1 frame gambar bersih (clean frame) untuk Admin Zone Drawer Canvas"""
+    """Mengambil 1 snapshot frame bersih CCTV (format JPEG) untuk keperluan Admin Zone Drawing"""
+    global latest_clean_frame, latest_frame, lock
     with lock:
         frame_bytes = latest_clean_frame if latest_clean_frame is not None else latest_frame
-        if frame_bytes is None:
-            # Fallback jika belum ada frame: buat gambar placeholder
-            blank = np.zeros((480, 640, 3), dtype=np.uint8)
-            cv2.putText(blank, "Menunggu Video Feed...", (180, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-            _, jpeg = cv2.imencode('.jpg', blank)
-            frame_bytes = jpeg.tobytes()
-            
-    res = Response(frame_bytes, mimetype='image/jpeg')
-    res.headers.add("Access-Control-Allow-Origin", "*")
-    res.headers.add("Cache-Control", "no-cache, no-store, must-revalidate")
-    return res
+    
+    if frame_bytes is None:
+        blank = np.zeros((480, 640, 3), dtype=np.uint8)
+        _, jpeg = cv2.imencode('.jpg', blank)
+        return Response(jpeg.tobytes(), mimetype='image/jpeg')
+    
+    return Response(frame_bytes, mimetype='image/jpeg')
 
 @app.route('/api/status')
 def api_status():
@@ -267,6 +250,7 @@ def api_set_source():
         if rule_engine:
             rule_engine.reset()
     
+    print(f"[INFO StreamServer] API /api/set_source dipanggil dengan sumber: {new_src}")
     return jsonify({
         "status": "success",
         "message": f"Sumber video berhasil diubah menjadi: {new_src}"
@@ -298,9 +282,8 @@ def api_reload_faces():
             count = face_recognizer.reload_database()
         elif face_recognizer and hasattr(face_recognizer, 'load_face_database'):
             face_recognizer.known_face_embeddings = {}
-            face_recognizer.known_names = []
             face_recognizer.load_face_database()
-            count = len(getattr(face_recognizer, 'known_face_embeddings', {}))
+            count = len(face_recognizer.known_face_embeddings)
     
     return jsonify({
         "status": "success",

@@ -53,7 +53,7 @@ class PresenceController extends Controller
                         $zoneData['employee_position'] = $dbZone->employee->position ?? 'Pegawai';
                         $zoneData['employee_photo'] = $dbZone->employee->photo_filename;
                         $zoneData['display_title'] = $dbZone->employee->name;
-                        $zoneData['display_subtitle'] = $dbZone->zone_name . ($dbZone->employee->position ? ' • ' . $dbZone->employee->position : '');
+                        $zoneData['display_subtitle'] = $dbZone->zone_name . ($dbZone->employee->position ? ' â€¢ ' . $dbZone->employee->position : '');
                     } else {
                         $zoneData['employee_name'] = null;
                         $zoneData['employee_position'] = null;
@@ -166,9 +166,26 @@ class PresenceController extends Controller
             'source' => 'required|string',
         ]);
 
+        $newSource = trim($request->source);
+
+        // 1. Simpan ke config.json agar persisten
+        $configPath = base_path('monitor/config.json');
+        if (file_exists($configPath)) {
+            $cfg = json_decode(file_get_contents($configPath), true) ?: [];
+            $cfg['source'] = $newSource;
+            file_put_contents($configPath, json_encode($cfg, JSON_PRETTY_PRINT));
+        }
+
+        // 2. Update data room di database
+        if ($activeRoomId = session('active_room_id')) {
+            \App\Models\Room::where('id', $activeRoomId)->update(['cctv_source' => $newSource]);
+        }
+        session(['active_room_source' => $newSource]);
+
+        // 3. Tembak Python Engine untuk Hot-Swapping Video
         try {
-            $response = Http::post($this->pythonApiUrl . '/api/set_source?source=' . urlencode($request->source));
-            return redirect()->back()->with('success', 'Sumber video berhasil diubah menjadi: ' . $request->source);
+            $response = Http::timeout(3)->post($this->pythonApiUrl . '/api/set_source?source=' . urlencode($newSource));
+            return redirect()->back()->with('success', "Sumber video berhasil diubah dan diputar: {$newSource}");
         } catch (\Exception $e) {
             return redirect()->back()->with('error', 'Gagal menghubungi AI Engine: ' . $e->getMessage());
         }
