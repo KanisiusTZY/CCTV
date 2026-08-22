@@ -1,4 +1,6 @@
-﻿import os
+import warnings
+warnings.filterwarnings('ignore', category=FutureWarning)
+import os
 import cv2
 import numpy as np
 

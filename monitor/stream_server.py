@@ -1,3 +1,5 @@
+import warnings
+warnings.filterwarnings('ignore', category=FutureWarning)
 import argparse
 import cv2
 import json
