@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Log;
 
 class CheckAwayPresenceCommand extends Command
 {
-    protected $signature = 'presence:check-away {--cooldown=15 : Waktu jeda anti-spam antar notifikasi dalam menit}';
+    protected $signature = 'presence:check-away {--cooldown=3 : Waktu jeda anti-spam antar notifikasi dalam menit}';
     protected $description = 'Periksa durasi pegawai meninggalkan meja dan kirim peringatan WhatsApp jika melewati batas';
 
     public function handle(WhatsAppService $whatsAppService): int
@@ -45,11 +45,12 @@ class CheckAwayPresenceCommand extends Command
                 $awaySeconds = (float) ($zinfo['away_duration_seconds'] ?? 0);
                 $awayMinutes = (int) floor($awaySeconds / 60);
 
-                if ($status === 'TIDAK_DI_TEMPAT' && isset($employees[$zoneId])) {
+                if (isset($employees[$zoneId])) {
                     $employee = $employees[$zoneId];
-                    $maxMinutes = (int) ($employee->max_away_minutes ?: 15);
+                    $maxMinutes = (int) ($employee->max_away_minutes ?: 1);
 
-                    if ($awayMinutes >= $maxMinutes) {
+                    if ($status === 'TIDAK_DI_TEMPAT' && $awayMinutes >= $maxMinutes) {
+                        // Periksa masa jeda (cooldown) anti-spam
                         $lastAlert = PresenceNotificationLog::where('employee_id', $employee->id)
                             ->where('zone_id', $zoneId)
                             ->where('notification_type', 'AWAY_THRESHOLD')
