@@ -9,19 +9,15 @@ use Illuminate\Support\Facades\Log;
 
 class WhatsAppService
 {
-    protected ?string $fonnteToken;
-    protected string $driver;
-    protected string $localGatewayUrl;
+    protected string $gatewayUrl;
 
     public function __construct()
     {
-        $this->fonnteToken = env('FONNTE_TOKEN');
-        $this->driver = env('WA_GATEWAY_DRIVER', 'local'); // 'local' (Baileys) or 'fonnte'
-        $this->localGatewayUrl = env('WA_LOCAL_URL', 'http://127.0.0.1:3000');
+        $this->gatewayUrl = env('WA_LOCAL_URL', 'http://127.0.0.1:3000');
     }
 
     /**
-     * Format nomor HP Indonesia menjadi format internasional murni (628...)
+     * Format nomor HP Indonesia menjadi format standar internasional (628...)
      */
     public function formatPhoneNumber(string $phone): string
     {
@@ -35,7 +31,7 @@ class WhatsAppService
     }
 
     /**
-     * Kirim pesan WhatsApp melalui Local Gateway (Baileys) atau Fonnte
+     * Kirim pesan WhatsApp melalui Local Gateway (Baileys Engine)
      */
     public function sendMessage(
         string $targetPhone,
@@ -46,45 +42,20 @@ class WhatsAppService
     ): bool {
         $formattedPhone = $this->formatPhoneNumber($targetPhone);
 
-        // 1. Coba kirim via Local Baileys Gateway jika driver = 'local'
-        if ($this->driver === 'local') {
-            try {
-                $resp = Http::timeout(5)->post("{$this->localGatewayUrl}/send", [
-                    'target' => $formattedPhone,
-                    'message' => $message,
-                ]);
+        try {
+            $response = Http::timeout(5)->post("{$this->gatewayUrl}/send", [
+                'target' => $formattedPhone,
+                'message' => $message,
+            ]);
 
-                if ($resp->successful() && ($resp->json()['status'] ?? false)) {
-                    $this->logNotification($employeeId, $zoneId, $formattedPhone, $type, $message, 'SENT');
-                    return true;
-                }
-            } catch (\Throwable $e) {
-                Log::warning("[WhatsApp Local Gateway Offline] Beralih ke Fonnte jika tersedia: " . $e->getMessage());
-            }
+            $status = ($response->successful() && ($response->json()['status'] ?? false)) ? 'SENT' : 'FAILED';
+            $this->logNotification($employeeId, $zoneId, $formattedPhone, $type, $message, $status);
+            return $status === 'SENT';
+        } catch (\Throwable $e) {
+            Log::error("[WhatsApp Local Gateway Error] " . $e->getMessage());
+            $this->logNotification($employeeId, $zoneId, $formattedPhone, $type, $message, 'FAILED');
+            return false;
         }
-
-        // 2. Fallback ke Fonnte jika local gateway offline atau driver = 'fonnte'
-        if (!empty($this->fonnteToken)) {
-            try {
-                $response = Http::withHeaders([
-                    'Authorization' => $this->fonnteToken,
-                ])->timeout(5)->post('https://api.fonnte.com/send', [
-                    'target' => $formattedPhone,
-                    'message' => $message,
-                    'countryCode' => '62',
-                ]);
-
-                $result = $response->json();
-                $status = ($response->successful() && ($result['status'] ?? false)) ? 'SENT' : 'FAILED';
-                $this->logNotification($employeeId, $zoneId, $formattedPhone, $type, $message, $status);
-                return $status === 'SENT';
-            } catch (\Throwable $e) {
-                Log::error("[WhatsAppService Fonnte Exception] " . $e->getMessage());
-            }
-        }
-
-        $this->logNotification($employeeId, $zoneId, $formattedPhone, $type, $message, 'FAILED');
-        return false;
     }
 
     /**

@@ -21,29 +21,29 @@ class WhatsAppWebhookController extends Controller
     }
 
     /**
-     * Endpoint Webhook yang menerima chat masuk dari WhatsApp (Fonnte)
+     * Endpoint Webhook yang menerima chat masuk dari WhatsApp Gateway Lokal (Baileys)
      */
     public function handle(Request $request): JsonResponse
     {
-        // 1. Verifikasi GET dari Fonnte
+        // 1. Verifikasi GET endpoint
         if ($request->isMethod('get')) {
             return response()->json([
                 'status' => true,
-                'message' => 'Fonnte Webhook Active',
+                'message' => 'WhatsApp Webhook Active & Ready',
             ]);
         }
 
-        // 2. Tangkap parameter webhook Fonnte
+        // 2. Tangkap pesan masuk
         $sender = $request->input('sender') ?? $request->input('from');
         $message = $request->input('message') ?? $request->input('text');
         $name = $request->input('name') ?? '';
 
-        Log::info("[WhatsApp Webhook Masuk] Dari: {$sender} ({$name}) | Pesan: {$message}");
+        Log::info("[WhatsApp Masuk] Dari: {$sender} ({$name}) | Pesan: {$message}");
 
         if (empty($sender) || empty($message)) {
             return response()->json([
                 'status' => false,
-                'message' => 'No message or sender',
+                'message' => 'Missing sender or message',
             ]);
         }
 
@@ -52,7 +52,7 @@ class WhatsAppWebhookController extends Controller
             return response()->json(['status' => true]);
         }
 
-        // Generate balasan cerdas dari Gemini 3.6 Flash
+        // Generate balasan cerdas dari Gemini AI dengan konteks live CCTV
         $aiReply = $this->geminiService->askAssistant($message, $sender, $name);
 
         // Catat ke log database
@@ -66,14 +66,10 @@ class WhatsAppWebhookController extends Controller
             'away_duration_minutes' => null,
         ]);
 
-        // Kirim balasan via 2 jalur (Direct API Send + Webhook JSON Reply) agar terkirim 100%
-        $this->whatsAppService->sendMessage($sender, $aiReply, null, null, 'GEMINI_AI_REPLY');
-
-        // Format respon resmi Fonnte untuk auto-reply
         return response()->json([
+            'status' => true,
             'reply' => $aiReply,
             'message' => $aiReply,
-            'status' => true,
         ]);
     }
 }
