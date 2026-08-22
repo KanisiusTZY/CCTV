@@ -32,23 +32,24 @@ class GeminiService
         // 2. Ambil data karyawan dari database
         $employeeContext = $this->fetchEmployeeContext($senderNumber);
 
-        // 3. Susun System Prompt
+        // 3. Susun System Prompt (Kepribadian & Aturan Respon AI)
         $systemPrompt = <<<PROMPT
-Anda adalah "Pratama AI Assistant", asisten virtual pintar untuk sistem pemantauan CCTV kantor Pratama TECH.
-Tugas Anda adalah melayani dan menjawab pertanyaan staf, manajer, atau HRD terkait presensi karyawan di kantor dan status meja/workstation secara sopan, ramah, profesional, dan ringkas.
+Anda adalah "Pratama AI Assistant", asisten monitoring presensi CCTV resmi kantor Pratama TECH.
+Karakter Anda: Profesional, lugas, ringkas, informatif, dan tidak bertele-tele.
 
-Berikut adalah DATA REAL-TIME CCTV DAN DATABASE SAAT INI:
+DATA REAL-TIME CCTV DAN PEGAWAI:
 --------------------------------------------------
 {$cctvContext}
 
 {$employeeContext}
 --------------------------------------------------
 
-Aturan Menjawab:
-1. Jawablah dalam Bahasa Indonesia yang ramah, sopan, natural, dan gunakan emoji secukupnya.
-2. Gunakan data real-time di atas sebagai acuan utama jika ditanya mengenai siapa saja yang ada di kantor, siapa yang sedang di meja, atau siapa yang sedang meninggalkan meja.
-3. Jawaban harus padat, jelas, dan akurat (tidak bertele-tele), cocok untuk format pesan WhatsApp.
-4. Jika ditanya hal umum di luar monitoring kantor, tetap jawab dengan sopan dan ramah selayaknya asisten kantor yang pintar.
+PEDOMAN GAYA BICARA & FORMAT JAWABAN:
+1. Gunakan Bahasa Indonesia yang baku, profesional, dan efisien.
+2. JANGAN menggunakan terlalu banyak emoji. Batasi penggunaan emoji seminimal mungkin (maksimal 1 emoji per pesan atau tidak sama sekali).
+3. Langsung jawab inti pertanyaan tanpa basa-basi pembuka/penutup yang panjang.
+4. Gunakan poin-poin sederhana jika menyajikan status banyak meja/pegawai agar mudah dibaca.
+5. Selalu gunakan data real-time di atas sebagai fakta utama status workstation.
 PROMPT;
 
         $modelsToTry = array_unique([$this->model, 'gemini-flash-latest', 'gemini-flash-lite-latest', 'gemini-3.6-flash']);
@@ -72,8 +73,8 @@ PROMPT;
                         ]
                     ],
                     'generationConfig' => [
-                        'temperature' => 0.5,
-                        'maxOutputTokens' => 1000,
+                        'temperature' => 0.3,
+                        'maxOutputTokens' => 1500,
                     ]
                 ]);
 
@@ -89,7 +90,7 @@ PROMPT;
             }
         }
 
-        return "Halo! Sistem AI Pratama TECH sedang online dan memantau workstation kantor. Ada yang bisa saya bantu terkait informasi presensi rekan kerja?";
+        return "Sistem monitoring CCTV Pratama TECH sedang aktif. Silakan tanyakan status presensi atau workstation yang ingin diketahui.";
     }
 
     /**
@@ -105,7 +106,7 @@ PROMPT;
                 $zones = $data['zones'] ?? [];
 
                 $summary = "Status Kamera: ONLINE (FPS: " . round($data['fps'] ?? 0, 1) . ")\n";
-                $summary .= "Total Orang Terdeteksi di Workstation: {$totalOccupied}\n\nDetail Meja:\n";
+                $summary .= "Total Orang Terdeteksi di Meja: {$totalOccupied}\nDetail Meja:\n";
 
                 foreach ($zones as $zid => $zinfo) {
                     $status = $zinfo['status'] ?? 'TIDAK_DI_TEMPAT';
@@ -113,11 +114,11 @@ PROMPT;
                     $away = round($zinfo['away_duration_seconds'] ?? 0);
                     $presence = round($zinfo['presence_duration_seconds'] ?? 0);
 
-                    $summary .= "- Meja [{$zid}]: Status={$status}, Pegawai Teridentifikasi={$person}";
+                    $summary .= "- Meja [{$zid}]: Status={$status}, Pegawai={$person}";
                     if ($status === 'BEKERJA') {
-                        $summary .= " (Sudah bekerja: " . round($presence / 60, 1) . " menit)\n";
+                        $summary .= " (Bekerja: " . round($presence / 60, 1) . " menit)\n";
                     } else {
-                        $summary .= " (Telah meninggalkan meja: " . round($away / 60, 1) . " menit)\n";
+                        $summary .= " (Tidak di meja: " . round($away / 60, 1) . " menit)\n";
                     }
                 }
 
@@ -127,7 +128,7 @@ PROMPT;
             // Stream server offline
         }
 
-        return "Status Kamera: Sedang standby / offline. Data presensi diambil dari database terakhir.";
+        return "Status Kamera: Standby.";
     }
 
     /**
@@ -137,17 +138,17 @@ PROMPT;
     {
         try {
             $employees = Employee::all();
-            $lines = ["Daftar Pegawai Terdaftar:"];
+            $lines = ["Daftar Pegawai:"];
             $senderInfo = "";
 
             foreach ($employees as $emp) {
-                $lines[] = "- {$emp->name} ({$emp->position}, Meja: " . ($emp->assigned_zone_id ?: 'Belum diatur') . ", WA: {$emp->phone_number})";
+                $lines[] = "- {$emp->name} ({$emp->position}, Meja: " . ($emp->assigned_zone_id ?: '-') . ", WA: {$emp->phone_number})";
 
                 if (!empty($senderNumber) && !empty($emp->phone_number)) {
                     $cleanSender = preg_replace('/[^0-9]/', '', $senderNumber);
                     $cleanEmp = preg_replace('/[^0-9]/', '', $emp->phone_number);
                     if (str_ends_with($cleanSender, substr($cleanEmp, -8))) {
-                        $senderInfo = "Pengirim Chat Ini Adalah: {$emp->name} ({$emp->position})";
+                        $senderInfo = "Pengirim Chat: {$emp->name} ({$emp->position})";
                     }
                 }
             }
@@ -158,7 +159,7 @@ PROMPT;
 
             return implode("\n", $lines);
         } catch (\Throwable $e) {
-            return "Data pegawai: Tidak dapat dimuat.";
+            return "Data pegawai: Standby.";
         }
     }
 }
