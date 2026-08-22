@@ -55,26 +55,23 @@ class GeminiService
             $employeeContext .= "\n\n" . $senderInfo;
         }
 
-        // 3. Susun System Prompt yang presisi
+        // 3. Susun System Prompt yang tegas (0% EMOJI)
         $systemPrompt = <<<PROMPT
-Anda adalah "Pratama AI Assistant", asisten resmi sistem monitoring CCTV kantor Pratama TECH.
-Karakter: Profesional, akurat, ringkas, dan to the point.
+Anda adalah "Pratama AI Assistant", asisten monitoring presensi CCTV resmi kantor Pratama TECH.
+Karakter: Sangat profesional, lugas, ringkas, informatif, dan to the point.
 
-DATA AKTUAL CCTV LIVE (FALID & REAL-TIME):
+DATA AKTUAL CCTV LIVE:
 --------------------------------------------------
 {$cctvContext}
 
 {$employeeContext}
 --------------------------------------------------
 
-PEDOMAN JAWABAN:
-1. Gunakan Bahasa Indonesia yang baku, profesional, dan efisien.
-2. Gunakan maksimal 1 emoji per pesan.
-3. Jawablah secara akurat sesuai data di atas:
-   - Jika ditanya "siapa yang terdeteksi wajahnya", sebutkan hanya nama yang "Wajah Terverifikasi AI" (Face Recognition cocok).
-   - Jika ditanya "siapa saja yang ada di meja / bekerja", sebutkan seluruh meja yang statusnya BEKERJA.
-   - Cantumkan durasi aktif/away dengan angka menit yang benar sesuai data.
-4. Jawab langsung pada intinya tanpa basa-basi berlebih.
+PEDOMAN GAYA BAHASA (MUTLAK):
+1. DILARANG MENGGUNAKAN EMOJI ATAU EMOTIKON SAMA SEKALI (0% emoji). Jangan sertakan simbol gambar/ikon apapun di dalam jawaban.
+2. Gunakan Bahasa Indonesia yang baku, profesional, rapi, dan padat.
+3. Jawab langsung ke inti pertanyaan tanpa basa-basi pembuka atau penutup yang panjang.
+4. Gunakan poin atau daftar sederhana jika menyajikan banyak data.
 PROMPT;
 
         $modelsToTry = array_unique([$this->model, 'gemini-flash-latest', 'gemini-flash-lite-latest', 'gemini-3.6-flash']);
@@ -98,7 +95,7 @@ PROMPT;
                         ]
                     ],
                     'generationConfig' => [
-                        'temperature' => 0.2,
+                        'temperature' => 0.1,
                         'maxOutputTokens' => 1500,
                     ]
                 ]);
@@ -107,7 +104,9 @@ PROMPT;
                     $json = $response->json();
                     $reply = $json['candidates'][0]['content']['parts'][0]['text'] ?? null;
                     if (!empty($reply)) {
-                        return trim($reply);
+                        // Bersihkan sisa emoji jika model masih menghasilkan emoji
+                        $cleanReply = preg_replace('/[\x{1F600}-\x{1F64F}\x{1F300}-\x{1F5FF}\x{1F680}-\x{1F6FF}\x{1F1E0}-\x{1F1FF}\x{2600}-\x{26FF}\x{2700}-\x{27BF}\x{FE00}-\x{FE0F}\x{1F900}-\x{1F9FF}\x{1FA70}-\x{1FAFF}]/u', '', $reply);
+                        return trim($cleanReply);
                     }
                 }
             } catch (\Throwable $e) {
@@ -119,7 +118,7 @@ PROMPT;
     }
 
     /**
-     * Ambil ringkasan status zona dari Python stream server dengan key JSON yang presisi
+     * Ambil ringkasan status zona dari Python stream server
      */
     protected function fetchCctvStatusSummary(array $employeeByZone): string
     {
