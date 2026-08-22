@@ -107,12 +107,15 @@ def init_engine(source=None):
     # Inisialisasi Face Recognition Module
     face_cfg = config_data.get("face_recognition", {})
     face_model = face_cfg.get("model_name", "buffalo_s")
-    face_thresh = face_cfg.get("similarity_threshold", 0.28)
+    face_thresh = face_cfg.get("similarity_threshold", 0.22)
     use_gpu = face_cfg.get("use_gpu", False)
+    monitor_dir = os.path.dirname(os.path.abspath(__file__))
+    faces_dir = os.path.join(monitor_dir, "faces_db")
     try:
-        face_recognizer = FaceRecognizerModule("faces_db", model_name=face_model, similarity_threshold=face_thresh, use_gpu=use_gpu)
-    except Exception:
-        face_recognizer = FaceRecognizerModule("faces_db")
+        face_recognizer = FaceRecognizerModule(faces_dir, model_name=face_model, similarity_threshold=face_thresh, use_gpu=use_gpu)
+    except Exception as e:
+        print(f"[ERROR FaceRecognizer Init] {e}")
+        face_recognizer = FaceRecognizerModule(faces_dir)
         
     rule_engine = RuleZonePresence(config_data)
     visualizer = Visualizer()

@@ -58,7 +58,7 @@ class ServeAllCommand extends Command
 
             // Jalankan Python Stream Server secara independen di background (dengan -u unbuffered output)
             if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
-                pclose(popen("start /B \"\" \"{$pythonExec}\" -u \"{$normScriptPath}\" --port {$pythonPort}", "r"));
+                pclose(popen("cd /d \"{$normScriptDir}\" && start /B \"\" \"{$pythonExec}\" -u \"{$normScriptPath}\" --port {$pythonPort}", "r"));
             } else {
                 exec("cd \"{$scriptDir}\" && python3 -u \"{$scriptPath}\" --port {$pythonPort} > /dev/null 2>&1 &");
             }
