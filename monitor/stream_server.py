@@ -1,4 +1,9 @@
 import warnings
+try:
+    import onnxruntime
+    onnxruntime.set_default_logger_severity(3)
+except Exception:
+    pass
 warnings.filterwarnings('ignore', category=FutureWarning)
 import argparse
 import cv2
