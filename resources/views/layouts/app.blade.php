@@ -68,30 +68,25 @@
             
             <!-- App Brand & Active Room Indicator -->
             <div class="flex items-center gap-3">
-                <a href="{{ route('presence.dashboard') }}" class="flex items-center gap-3">
-                    <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-                        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
-                        </svg>
-                    </div>
-                    <div>
-                        <h1 class="font-bold text-sm sm:text-base text-white tracking-tight leading-tight">
-                            AI CCTV Workplace Monitor
-                        </h1>
-                        <p class="text-[11px] text-indigo-400 font-medium flex items-center gap-1.5">
-                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                            <span>{{ session('active_room_name', 'Ruang Kerja IT & Developer') }}</span>
-                        </p>
-                    </div>
-                </a>
+                <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20 shrink-0">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="font-bold text-sm sm:text-base text-white tracking-tight leading-tight">
+                        AI CCTV Workplace Monitor
+                    </h1>
+                    <a href="{{ route('rooms.index') }}" class="text-[11px] text-indigo-400 hover:text-indigo-300 font-medium flex items-center gap-1.5 transition mt-0.5 group" title="Klik untuk ganti ruangan">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                        <span class="group-hover:underline">{{ session('active_room_name', 'Ruang Kerja IT & Developer') }}</span>
+                        <span class="text-[10px] text-gray-500 group-hover:text-indigo-300">(Ganti)</span>
+                    </a>
+                </div>
             </div>
 
             <!-- Navigation Links Menu -->
             <nav class="flex items-center gap-1.5 overflow-x-auto py-1">
-                <a href="{{ route('rooms.index') }}" class="nav-link {{ request()->routeIs('rooms.*') ? 'active' : '' }}">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
-                    <span>Pilih Ruangan</span>
-                </a>
                 <a href="{{ route('presence.dashboard') }}" class="nav-link {{ request()->routeIs('presence.dashboard') ? 'active' : '' }}">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                     <span>Monitoring Live</span>
