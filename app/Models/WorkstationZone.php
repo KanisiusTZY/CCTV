@@ -17,6 +17,7 @@ class WorkstationZone extends Model
 
     protected $fillable = [
         'zone_id',
+        'room_id',
         'zone_name',
         'bbox_x1',
         'bbox_y1',
@@ -24,7 +25,7 @@ class WorkstationZone extends Model
         'bbox_y2',
     ];
 
-    public static function syncFromConfig(array $chairZones)
+    public static function syncFromConfig(array $chairZones, $roomId = null)
     {
         foreach ($chairZones as $z) {
             if (!isset($z['id']) || !isset($z['bbox'])) {
@@ -33,17 +34,28 @@ class WorkstationZone extends Model
             $zoneId = $z['id'];
             $bbox = $z['bbox'];
 
+            $updateData = [
+                'zone_name' => 'Meja ' . str_replace('chair_', '', $zoneId),
+                'bbox_x1' => $bbox[0] ?? 0,
+                'bbox_y1' => $bbox[1] ?? 0,
+                'bbox_x2' => $bbox[2] ?? 0,
+                'bbox_y2' => $bbox[3] ?? 0,
+            ];
+
+            if ($roomId) {
+                $updateData['room_id'] = $roomId;
+            }
+
             static::updateOrCreate(
                 ['zone_id' => $zoneId],
-                [
-                    'zone_name' => 'Meja ' . str_replace('chair_', '', $zoneId),
-                    'bbox_x1' => $bbox[0] ?? 0,
-                    'bbox_y1' => $bbox[1] ?? 0,
-                    'bbox_x2' => $bbox[2] ?? 0,
-                    'bbox_y2' => $bbox[3] ?? 0,
-                ]
+                $updateData
             );
         }
+    }
+
+    public function room()
+    {
+        return $this->belongsTo(Room::class, 'room_id', 'id');
     }
 
     public function employee()

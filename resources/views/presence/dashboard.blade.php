@@ -9,8 +9,7 @@
         <div class="flex items-center gap-3">
             <div class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
             <div>
-                <h2 class="text-base font-bold text-white">Live Monitoring Stream</h2>
-                <p class="text-xs text-gray-400">Deteksi realtime zona meja kerja & rekognisi wajah pegawai</p>
+                <div class="flex items-center gap-2"><h2 class="text-base font-bold text-white">{{ session('active_room_name', 'Ruang Kerja IT & Developer') }}</h2><span class="text-[10px] font-mono font-semibold px-2 py-0.5 bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded-full">Live CCTV</span></div><p class="text-xs text-gray-400">Deteksi realtime zona meja kerja & rekognisi wajah pegawai</p>
             </div>
         </div>
         <div class="flex flex-wrap items-center gap-3">
@@ -78,7 +77,7 @@
                     
                     <!-- Live Watermark Overlay -->
                     <div class="absolute top-4 left-4 pointer-events-none bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg border border-white/10 text-white text-xs font-mono">
-                        REC • <span id="liveClock">00:00:00</span>
+                        REC â€¢ <span id="liveClock">00:00:00</span>
                     </div>
                 </div>
             </div>
@@ -112,8 +111,8 @@
                             $empPhoto = $zone['employee_photo'] ?? null;
                             $mainTitle = $empName ? $empName : ($zone['zone_name'] ?? 'Meja ' . str_replace('chair_', '', $zoneId));
                             $subTitle = $empName 
-                                ? (($zone['zone_name'] ?? str_replace('_', ' ', $zoneId)) . ' • ' . ($zone['employee_position'] ?? 'Pegawai'))
-                                : (str_replace('_', ' ', $zoneId) . ' • Belum Ditugaskan');
+                                ? (($zone['zone_name'] ?? str_replace('_', ' ', $zoneId)) . ' â€¢ ' . ($zone['employee_position'] ?? 'Pegawai'))
+                                : (str_replace('_', ' ', $zoneId) . ' â€¢ Belum Ditugaskan');
                         @endphp
                         <div id="card-{{ $zoneId }}" class="glass-panel p-4 rounded-xl border transition-all duration-300 hover:translate-y-[-2px] {{ $isWorking ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-rose-500/30 bg-rose-500/5' }}">
                             <div class="flex items-center justify-between mb-3">
@@ -305,8 +304,8 @@
                     const empPos = zone.employee_position || 'Pegawai';
                     const mainTitle = empName ? empName : (zone.zone_name || ('Meja ' + zoneId.replace('chair_', '')));
                     const subTitle = empName 
-                        ? ((zone.zone_name || zoneId.replace('_', ' ')) + ' • ' + empPos)
-                        : (zoneId.replace('_', ' ') + ' • Belum Ditugaskan');
+                        ? ((zone.zone_name || zoneId.replace('_', ' ')) + ' â€¢ ' + empPos)
+                        : (zoneId.replace('_', ' ') + ' â€¢ Belum Ditugaskan');
 
                     let card = document.getElementById(`card-${zoneId}`);
 

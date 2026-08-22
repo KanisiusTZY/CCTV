@@ -44,11 +44,6 @@
             background: linear-gradient(135deg, rgba(99,102,241,0.15), rgba(139,92,246,0.1));
             color: #a5b4fc; border: 1px solid rgba(99,102,241,0.2);
         }
-        .pulse-red { animation: pulseRed 2s infinite; }
-        @keyframes pulseRed {
-            0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-            50% { box-shadow: 0 0 0 12px rgba(239, 68, 68, 0); }
-        }
     </style>
     @yield('head')
 </head>
@@ -57,7 +52,7 @@
     <!-- Sidebar -->
     <aside id="sidebar" class="hidden lg:flex flex-col w-64 min-h-screen glass-panel border-r border-gray-800 py-6 px-4 fixed z-40">
         <!-- Brand -->
-        <div class="flex items-center gap-3 px-2 mb-8">
+        <div class="flex items-center gap-3 px-2 mb-4">
             <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
                 <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
             </div>
@@ -65,6 +60,21 @@
                 <h1 class="font-bold text-base text-white tracking-tight">AI CCTV Monitor</h1>
                 <p class="text-[10px] text-gray-500 uppercase tracking-widest">Workplace Presence</p>
             </div>
+        </div>
+
+        <!-- Active Room Widget -->
+        <div class="p-3 bg-gray-900/90 rounded-2xl border border-indigo-500/30 mb-6 shadow-lg">
+            <div class="text-[10px] text-gray-400 uppercase font-mono tracking-wider mb-1 flex items-center justify-between">
+                <span>Ruangan Terpilih</span>
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            </div>
+            <div class="font-bold text-xs text-white truncate mb-2">
+                {{ session('active_room_name', 'Ruang Kerja IT & Developer') }}
+            </div>
+            <a href="{{ route('rooms.index') }}" class="w-full bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 text-[11px] font-semibold py-1.5 px-2.5 rounded-lg border border-indigo-500/30 flex items-center justify-center gap-1.5 transition">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
+                Ganti Ruangan
+            </a>
         </div>
 
         <!-- Navigation -->
@@ -88,6 +98,10 @@
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                 Kelola Pegawai
             </a>
+            <a href="{{ route('rooms.index') }}" class="sidebar-link {{ request()->routeIs('rooms.*') ? 'active' : '' }}">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
+                Portal Ruangan
+            </a>
         </nav>
 
         <!-- Footer -->
@@ -105,8 +119,8 @@
         <button onclick="document.getElementById('sidebar').classList.toggle('hidden'); document.getElementById('sidebar').classList.toggle('flex');" class="text-gray-400 hover:text-white">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
         </button>
-        <h1 class="font-bold text-sm text-white">AI CCTV Monitor</h1>
-        <div></div>
+        <h1 class="font-bold text-sm text-white">{{ session('active_room_name', 'AI CCTV Monitor') }}</h1>
+        <a href="{{ route('rooms.index') }}" class="text-xs text-indigo-400 font-semibold">Ganti</a>
     </div>
 
     <!-- Main Content -->
