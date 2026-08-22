@@ -68,7 +68,7 @@ class AdminEmployeeController extends Controller
         // 4. Minta Python Engine Reload Wajah Live
         $this->notifyPythonReloadFaces();
 
-        return redirect()->route('admin.employees')->with('success', "Pegawai '{$name}' dan foto wajah berhasil didaftarkan ke AI Engine!");
+        return redirect()->route('admin.zones')->with('success', "Pegawai '{$name}' dan foto wajah berhasil didaftarkan ke AI Engine!");
     }
 
     /**
@@ -112,7 +112,7 @@ class AdminEmployeeController extends Controller
         $employee->save();
         $this->notifyPythonReloadFaces();
 
-        return redirect()->route('admin.employees')->with('success', "Data pegawai '{$name}' berhasil diperbarui.");
+        return redirect()->route('admin.zones')->with('success', "Data pegawai '{$name}' berhasil diperbarui.");
     }
 
     /**
@@ -146,7 +146,7 @@ class AdminEmployeeController extends Controller
         $employee->delete();
         $this->notifyPythonReloadFaces();
 
-        return redirect()->route('admin.employees')->with('success', "Pegawai '{$name}' dan foto wajah berhasil dihapus.");
+        return redirect()->route('admin.zones')->with('success', "Pegawai '{$name}' dan foto wajah berhasil dihapus.");
     }
 
     /**
@@ -155,7 +155,7 @@ class AdminEmployeeController extends Controller
     public function reloadFaceDb()
     {
         $res = $this->notifyPythonReloadFaces();
-        return redirect()->route('admin.employees')->with('success', 'Database wajah AI berhasil dimuat ulang!');
+        return redirect()->route('admin.zones')->with('success', 'Database wajah AI berhasil dimuat ulang!');
     }
 
     /**

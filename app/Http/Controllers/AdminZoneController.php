@@ -12,12 +12,12 @@ class AdminZoneController extends Controller
     private string $pythonApiUrl = 'http://localhost:5000';
 
     /**
-     * Halaman Utama Kelola Zona Meja (Interactive Canvas Zone Drawer)
+     * Halaman Utama Terpadu: Kelola Meja Kerja & Pegawai (Unified Visual Zone & Employee Manager)
      */
     public function index()
     {
         $zones = WorkstationZone::with('employee')->get();
-        $employees = Employee::whereNull('assigned_zone_id')->get();
+        $employees = Employee::with('zone')->orderBy('name', 'asc')->get();
 
         return view('admin.zones', compact('zones', 'employees'));
     }
@@ -56,7 +56,7 @@ class AdminZoneController extends Controller
     }
 
     /**
-     * Simpan Semua Zona Meja (Bulk Save dari Canvas Interactive)
+     * Simpan Semua Zona Meja Beserta Penugasan Pegawai Sekaligus
      */
     public function saveAllZones(Request $request)
     {
@@ -65,6 +65,7 @@ class AdminZoneController extends Controller
             'zones.*.id' => 'required|string',
             'zones.*.zone_name' => 'nullable|string',
             'zones.*.bbox' => 'required|array|size:4',
+            'zones.*.employee_id' => 'nullable',
         ]);
 
         $inputZones = $request->input('zones');
@@ -74,6 +75,7 @@ class AdminZoneController extends Controller
         foreach ($inputZones as $index => $z) {
             $zoneId = trim($z['id']);
             $zoneName = !empty($z['zone_name']) ? trim($z['zone_name']) : ('Meja ' . ($index + 1));
+            $employeeId = !empty($z['employee_id']) ? intval($z['employee_id']) : null;
             $bbox = [
                 intval($z['bbox'][0]),
                 intval($z['bbox'][1]),
@@ -87,6 +89,7 @@ class AdminZoneController extends Controller
                 'bbox' => $bbox
             ];
 
+            // Update / Buat Zona Meja
             WorkstationZone::updateOrCreate(
                 ['zone_id' => $zoneId],
                 [
@@ -97,10 +100,25 @@ class AdminZoneController extends Controller
                     'bbox_y2' => $bbox[3],
                 ]
             );
+
+            // Update Penugasan Pegawai di Meja ini
+            if ($employeeId) {
+                // Lepaskan pegawai lain yang sebelumnya menempati meja ini
+                Employee::where('assigned_zone_id', $zoneId)->where('id', '!=', $employeeId)->update(['assigned_zone_id' => null]);
+                // Set meja untuk pegawai yang dipilih
+                Employee::where('id', $employeeId)->update(['assigned_zone_id' => $zoneId]);
+            } else {
+                // Jika tidak ada pegawai dipilih, kosongkan penugasan meja ini
+                Employee::where('assigned_zone_id', $zoneId)->update(['assigned_zone_id' => null]);
+            }
         }
 
-        // Hapus zona dari DB yang tidak ada di daftar input
-        WorkstationZone::whereNotIn('zone_id', $validZoneIds)->delete();
+        // Hapus zona dari DB yang dihapus dari canvas
+        $deletedZones = WorkstationZone::whereNotIn('zone_id', $validZoneIds)->pluck('zone_id');
+        if ($deletedZones->isNotEmpty()) {
+            Employee::whereIn('assigned_zone_id', $deletedZones)->update(['assigned_zone_id' => null]);
+            WorkstationZone::whereIn('zone_id', $deletedZones)->delete();
+        }
 
         // Sync ke config.json Python Engine
         $this->syncToConfigJson($configChairZones);
@@ -109,12 +127,12 @@ class AdminZoneController extends Controller
         try {
             Http::timeout(2)->post($this->pythonApiUrl . '/api/reload_zones');
         } catch (\Exception $e) {
-            // Engine mungkin belum aktif, tetap simpan di config.json
+            // Engine mungkin belum aktif
         }
 
         return response()->json([
             'status' => 'success',
-            'message' => 'Zona meja kerja berhasil disimpan & disinkronkan ke AI Engine!',
+            'message' => 'Zona meja dan penempatan pegawai berhasil disimpan & disinkronkan ke AI Engine!',
             'total_zones' => count($configChairZones)
         ]);
     }
@@ -126,6 +144,7 @@ class AdminZoneController extends Controller
     {
         $zone = WorkstationZone::find($zoneId);
         if ($zone) {
+            Employee::where('assigned_zone_id', $zoneId)->update(['assigned_zone_id' => null]);
             $zone->delete();
         }
 
