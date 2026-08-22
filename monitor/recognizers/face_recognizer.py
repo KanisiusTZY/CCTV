@@ -120,39 +120,57 @@ class InsightFaceRecognizer:
     def match_face(self, face_crop):
         """
         Mencocokkan potongan gambar wajah (face_crop BGR) dengan database karyawan secara real-time.
-        
-        :return: (matched_name, confidence_score_pct) jika Cosine Similarity >= threshold, else (None, 0.0)
+        Mencegah deteksi palsu (false positive) pada bagian belakang kepala / tekstur hijab:
+        1. Validasi Face Detection Confidence (det_score >= 0.50)
+        2. Validasi Jarak Landmark Mata (eye_dist >= 8px)
+        3. Validasi Margin Kejelasan (best_similarity - second_best >= 0.04)
         """
         if self.app is None or not self.known_face_embeddings or face_crop is None or face_crop.size == 0:
             return None, 0.0
 
         try:
             faces = self.app.get(face_crop)
-            if len(faces) == 0:
+            if not faces:
                 return None, 0.0
 
-            largest_face = max(faces, key=lambda f: (f.bbox[2]-f.bbox[0]) * (f.bbox[3]-f.bbox[1]))
+            # Filter deteksi wajah palsu (artefak baju/kerudung/belakang kepala)
+            valid_faces = []
+            for f in faces:
+                det_sc = getattr(f, "det_score", 1.0)
+                if det_sc < 0.50:
+                    continue
+                if getattr(f, "kps", None) is not None and len(f.kps) >= 2:
+                    eye_dist = float(np.linalg.norm(f.kps[0] - f.kps[1]))
+                    if eye_dist < 8.0:
+                        continue
+                valid_faces.append(f)
+
+            if not valid_faces:
+                return None, 0.0
+
+            largest_face = max(valid_faces, key=lambda f: (f.bbox[2]-f.bbox[0]) * (f.bbox[3]-f.bbox[1]))
             query_embedding = largest_face.embedding
             q_norm = np.linalg.norm(query_embedding)
             if q_norm > 0:
                 query_embedding = query_embedding / q_norm
 
-            best_match_name = None
-            best_similarity = -1.0
-
+            sim_list = []
             for name, db_embedding in self.known_face_embeddings.items():
-                similarity = float(np.dot(query_embedding, db_embedding))
-                if similarity > best_similarity:
-                    best_similarity = similarity
-                    best_match_name = name
+                sim = float(np.dot(query_embedding, db_embedding))
+                sim_list.append((name, sim))
 
-            if best_similarity >= self.similarity_threshold and best_match_name:
-                confidence_pct = max(60.0, min(99.0, round(best_similarity * 100.0)))
-                return best_match_name, confidence_pct
+            sim_list.sort(key=lambda x: x[1], reverse=True)
+            best_name, best_sim = sim_list[0]
+            second_sim = sim_list[1][1] if len(sim_list) > 1 else 0.0
+
+            # Margin check: Wajah asli memiliki selisih kemiripan jelas terhadap orang lain
+            if best_sim >= self.similarity_threshold and (best_sim - second_sim) >= 0.04:
+                confidence_pct = max(60.0, min(99.0, round(best_sim * 100.0)))
+                return best_name, confidence_pct
 
             return None, 0.0
 
-        except Exception as e:
+        except Exception:
             return None, 0.0
 
     def verify_identity(self, frame, upper_body_bbox):
