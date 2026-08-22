@@ -302,7 +302,8 @@ class RuleZonePresence:
             last_check = self.last_identity_check_time.get(zone_id, 0.0)
 
             if face_recognizer and self.status[zone_id] == "BEKERJA" and self.matched_bbox[zone_id] is not None:
-                if verified_name is None or (current_time - last_check) > 0.5:
+                check_interval = 1.5 if verified_name is None else 8.0
+                if (current_time - last_check) > check_interval:
                     self.last_identity_check_time[zone_id] = current_time
                     v_name, v_conf = face_recognizer.verify_identity(frame, self.matched_bbox[zone_id])
                     if v_name:

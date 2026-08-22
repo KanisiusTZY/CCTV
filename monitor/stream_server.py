@@ -206,6 +206,7 @@ def video_processing_thread():
             if ret_jpg:
                 with lock:
                     latest_frame = jpeg.tobytes()
+                    latest_frame_seq += 1
                     if ret_clean_jpg:
                         latest_clean_frame = clean_jpeg.tobytes()
                     latest_results = cached_results
