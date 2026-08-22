@@ -110,6 +110,12 @@ def video_processing_thread():
     
     while is_running:
         cap_source = int(current_source) if str(current_source).isdigit() else current_source
+        if isinstance(cap_source, str) and not cap_source.startswith("rtsp://") and not cap_source.startswith("http://"):
+            if not os.path.isabs(cap_source):
+                monitor_dir = os.path.dirname(os.path.abspath(__file__))
+                candidate = os.path.join(monitor_dir, cap_source)
+                if os.path.exists(candidate):
+                    cap_source = candidate
         cap = cv2.VideoCapture(cap_source)
         if hasattr(cv2, 'CAP_PROP_BUFFERSIZE'):
             cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
