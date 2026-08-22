@@ -1,10 +1,11 @@
 import warnings
+warnings.filterwarnings('ignore', category=FutureWarning)
 try:
     import onnxruntime
     onnxruntime.set_default_logger_severity(3)
 except Exception:
     pass
-warnings.filterwarnings('ignore', category=FutureWarning)
+
 import os
 import cv2
 import numpy as np
@@ -40,14 +41,13 @@ class InsightFaceRecognizer:
             self.app = None
             return
 
-        # Tentukan Execution Provider ONNX Runtime (CPU / GPU)
         providers = ['CUDAExecutionProvider', 'CPUExecutionProvider'] if use_gpu else ['CPUExecutionProvider']
         
         print(f"[INFO InsightFace] Inisialisasi InsightFace (Model: {model_name}, Providers: {providers})...")
         try:
             self.app = FaceAnalysis(name=model_name, providers=providers)
             ctx_id = 0 if use_gpu else -1
-            self.app.prepare(ctx_id=ctx_id, det_size=(320, 320))
+            self.app.prepare(ctx_id=ctx_id, det_size=(640, 640), det_thresh=0.15)
             print(f"[INFO InsightFace] Model SCRFD + ArcFace '{model_name}' berhasil dimuat!")
         except Exception as e:
             print(f"[ERROR InsightFace] Gagal memuat InsightFace: {e}")
@@ -67,6 +67,7 @@ class InsightFaceRecognizer:
     def load_face_database(self):
         """
         Mengekstrak 512-dim vector embedding dari foto-foto karyawan di faces_db/ (Caching sekali di awal).
+        Dilengkapi multi-angle auto orientation & fallback detection scale.
         """
         if not os.path.exists(self.faces_dir):
             try:
@@ -78,20 +79,31 @@ class InsightFaceRecognizer:
         if self.app is None:
             return
 
-        valid_exts = ('.jpg', '.jpeg', '.png', '.bmp')
+        valid_exts = ('.jpg', '.jpeg', '.png', '.bmp', '.webp')
         for fname in os.listdir(self.faces_dir):
             if fname.lower().endswith(valid_exts):
                 name = os.path.splitext(fname)[0].replace('_', ' ').title()
                 img_path = os.path.join(self.faces_dir, fname)
                 img = cv2.imread(img_path)
                 if img is not None:
-                    # Jalankan deteksi SCRFD & ekstraksi embedding ArcFace
                     faces = self.app.get(img)
+                    
+                    # Fallback 1: Jika belum ketemu, coba rotasi 90, 180, 270 (untuk foto HP dengan orientasi miring)
+                    if len(faces) == 0:
+                        for rot in [cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_180, cv2.ROTATE_90_COUNTERCLOCKWISE]:
+                            rot_img = cv2.rotate(img, rot)
+                            faces = self.app.get(rot_img)
+                            if len(faces) > 0:
+                                break
+
+                    # Fallback 2: Jika masih belum ketemu, resize ke dimensi standar 640x640
+                    if len(faces) == 0:
+                        resized = cv2.resize(img, (640, 640))
+                        faces = self.app.get(resized)
+
                     if len(faces) > 0:
-                        # Ambil wajah terbesar dari foto template
                         largest_face = max(faces, key=lambda f: (f.bbox[2]-f.bbox[0]) * (f.bbox[3]-f.bbox[1]))
                         embedding = largest_face.embedding
-                        # Normalisasi L2 untuk Cosine Similarity
                         norm = np.linalg.norm(embedding)
                         if norm > 0:
                             embedding = embedding / norm
