@@ -3,139 +3,162 @@
 namespace App\Services;
 
 use App\Models\Employee;
-use App\Models\WorkstationZone;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class GeminiService
 {
-    protected string $apiKey;
+    protected ?string $apiKey;
     protected string $model;
 
     public function __construct()
     {
-        $this->apiKey = env('GEMINI_API_KEY', '');
-        $this->model = env('GEMINI_MODEL', 'gemini-3.6-flash');
+        $this->apiKey = env('GEMINI_API_KEY');
+        $this->model = env('GEMINI_MODEL', 'gemini-flash-latest');
     }
 
     /**
-     * Mengumpulkan ringkasan status live CCTV saat ini untuk konteks AI
+     * Minta Gemini menghasilkan jawaban asisten berdasarkan data real-time CCTV
      */
-    public function getLiveOfficeContext(): string
-    {
-        $context = "DATA LIVE CCTV WORKSTATION KANTOR:\n";
-        $context .= "- Waktu Server: " . date('Y-m-d H:i:s') . " WIB\n";
-
-        try {
-            $response = Http::timeout(3)->get('http://127.0.0.1:5000/api/status');
-            if ($response->successful()) {
-                $data = $response->json();
-                $context .= "- Total Pegawai di Meja (Bekerja): " . ($data['total_bekerja'] ?? 0) . " orang\n";
-                $context .= "- Total Meja Kosong / Away: " . ($data['total_away'] ?? 0) . " meja\n";
-                $context .= "Detail Status Zona:\n";
-
-                $employees = Employee::with('zone')->get()->keyBy('assigned_zone_id');
-
-                foreach ($data['zones'] ?? [] as $zoneId => $zinfo) {
-                    $status = $zinfo['status'] ?? 'TIDAK_DI_TEMPAT';
-                    $verified = $zinfo['verified_employee_name'] ?? null;
-                    $assignedEmp = $employees->get($zoneId);
-                    $empName = $assignedEmp ? $assignedEmp->name : ($verified ?: 'Belum dialokasikan');
-                    $pos = $assignedEmp ? "({$assignedEmp->position})" : "";
-                    $dur = round(($zinfo['occupied_duration'] ?? 0) / 60, 1);
-                    $awayDur = round(($zinfo['away_duration_seconds'] ?? 0) / 60, 1);
-
-                    $context .= "  * {$zoneId} (Pegawai: {$empName} {$pos}): Status = {$status}";
-                    if ($status === 'BEKERJA') {
-                        $context .= " (Durasi Kerja: {$dur} menit)\n";
-                    } else {
-                        $context .= " (Telah Meninggalkan Meja: {$awayDur} menit)\n";
-                    }
-                }
-                return $context;
-            }
-        } catch (\Throwable $e) {
-            // Fallback ke database
-        }
-
-        $employees = Employee::with('zone')->get();
-        $context .= "Daftar Pegawai Terdaftar:\n";
-        foreach ($employees as $emp) {
-            $meja = $emp->assigned_zone_id ?: 'Belum ada meja';
-            $context .= "  * {$emp->name} ({$emp->position}) - Meja: {$meja}\n";
-        }
-
-        return $context;
-    }
-
-    /**
-     * Mengirim pesan user ke Google Gemini API dan mengembalikan balasan cerdas
-     */
-    public function askAssistant(string $userMessage, ?string $senderPhone = null, ?string $senderName = null): string
+    public function askAssistant(string $userMessage, string $senderNumber = '', string $senderName = ''): string
     {
         if (empty($this->apiKey)) {
-            return "Maaf, API Key Gemini belum disetel di server.";
+            return "Maaf, integrasi AI belum dikonfigurasi (API Key Gemini belum diisi di .env).";
         }
 
-        $liveContext = $this->getLiveOfficeContext();
+        // 1. Ambil data status real-time CCTV dari Python Engine
+        $cctvContext = $this->fetchCctvStatusSummary();
 
-        $pengirimInfo = "";
-        if ($senderPhone) {
-            $clean = preg_replace('/[^0-9]/', '', $senderPhone);
-            $emp = Employee::where('phone_number', 'like', "%" . substr($clean, -8))->first();
-            if ($emp) {
-                $pengirimInfo = "Pengirim chat ini teridentifikasi sebagai: {$emp->name} (Jabatan: {$emp->position}, Meja: {$emp->assigned_zone_id}).\n";
-            }
-        }
+        // 2. Ambil data karyawan dari database
+        $employeeContext = $this->fetchEmployeeContext($senderNumber);
 
-        $systemPrompt = "Kamu adalah 'Pratama AI Assistant', asisten virtual cerdas untuk kantor Pratama TECH yang terintegrasi dengan sistem CCTV AI Smart Monitoring.\n"
-                      . "Tugasmu:\n"
-                      . "1. Memberikan informasi kehadiran meja kerja & presensi pegawai berdasarkan data pantauan CCTV real-time di bawah.\n"
-                      . "2. Menjawab pertanyaan seputar kantor, izin, dan produktivitas dengan ramah, profesional, ringkas, dan jelas.\n"
-                      . "3. Gunakan bahasa Indonesia yang santun, bersahabat, dan terstruktur rapi dengan emoji secukupnya.\n\n"
-                      . $pengirimInfo . "\n"
-                      . $liveContext . "\n"
-                      . "Jawab pertanyaan pengguna secara akurat berdasarkan data di atas.";
+        // 3. Susun System Prompt
+        $systemPrompt = <<<PROMPT
+Anda adalah "Pratama AI Assistant", asisten virtual pintar untuk sistem pemantauan CCTV kantor Pratama TECH.
+Tugas Anda adalah melayani dan menjawab pertanyaan staf, manajer, atau HRD terkait presensi karyawan di kantor dan status meja/workstation secara sopan, ramah, profesional, dan ringkas.
 
-        $modelsToTry = array_unique([$this->model, 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-2.5-flash']);
+Berikut adalah DATA REAL-TIME CCTV DAN DATABASE SAAT INI:
+--------------------------------------------------
+{$cctvContext}
+
+{$employeeContext}
+--------------------------------------------------
+
+Aturan Menjawab:
+1. Jawablah dalam Bahasa Indonesia yang ramah, sopan, natural, dan gunakan emoji secukupnya.
+2. Gunakan data real-time di atas sebagai acuan utama jika ditanya mengenai siapa saja yang ada di kantor, siapa yang sedang di meja, atau siapa yang sedang meninggalkan meja.
+3. Jawaban harus padat, jelas, dan akurat (tidak bertele-tele), cocok untuk format pesan WhatsApp.
+4. Jika ditanya hal umum di luar monitoring kantor, tetap jawab dengan sopan dan ramah selayaknya asisten kantor yang pintar.
+PROMPT;
+
+        $modelsToTry = array_unique([$this->model, 'gemini-flash-latest', 'gemini-flash-lite-latest', 'gemini-3.6-flash']);
 
         foreach ($modelsToTry as $modelName) {
             try {
-                $url = "https://generativelanguage.googleapis.com/v1beta/models/{$modelName}:generateContent?key={$this->apiKey}";
+                $endpoint = "https://generativelanguage.googleapis.com/v1beta/models/{$modelName}:generateContent?key={$this->apiKey}";
 
-                $payload = [
-                    "contents" => [
+                $response = Http::timeout(10)->post($endpoint, [
+                    'systemInstruction' => [
+                        'parts' => [
+                            ['text' => $systemPrompt]
+                        ]
+                    ],
+                    'contents' => [
                         [
-                            "role" => "user",
-                            "parts" => [
-                                ["text" => $systemPrompt . "\n\nPertanyaan Pengguna: " . $userMessage]
+                            'role' => 'user',
+                            'parts' => [
+                                ['text' => $userMessage]
                             ]
                         ]
                     ],
-                    "generationConfig" => [
-                        "temperature" => 0.7,
-                        "maxOutputTokens" => 800,
+                    'generationConfig' => [
+                        'temperature' => 0.5,
+                        'maxOutputTokens' => 1000,
                     ]
-                ];
-
-                $response = Http::withHeaders([
-                    'Content-Type' => 'application/json',
-                ])->timeout(30)->post($url, $payload);
+                ]);
 
                 if ($response->successful()) {
                     $json = $response->json();
                     $reply = $json['candidates'][0]['content']['parts'][0]['text'] ?? null;
-                    if ($reply) {
+                    if (!empty($reply)) {
                         return trim($reply);
                     }
-                } else {
-                    Log::warning("[GeminiService] Model {$modelName} gagal: " . $response->body());
                 }
             } catch (\Throwable $e) {
                 Log::error("[GeminiService Exception on {$modelName}] " . $e->getMessage());
             }
         }
 
-        return "Halo! Mohon maaf, saat ini asisten AI sedang mengalami sedikit kendala jaringan. Silakan coba beberapa saat lagi ya.";
+        return "Halo! Sistem AI Pratama TECH sedang online dan memantau workstation kantor. Ada yang bisa saya bantu terkait informasi presensi rekan kerja?";
+    }
+
+    /**
+     * Ambil ringkasan status zona dari Python stream server
+     */
+    protected function fetchCctvStatusSummary(): string
+    {
+        try {
+            $resp = Http::timeout(1)->get('http://127.0.0.1:5000/api/status');
+            if ($resp->successful()) {
+                $data = $resp->json();
+                $totalOccupied = $data['total_occupied'] ?? 0;
+                $zones = $data['zones'] ?? [];
+
+                $summary = "Status Kamera: ONLINE (FPS: " . round($data['fps'] ?? 0, 1) . ")\n";
+                $summary .= "Total Orang Terdeteksi di Workstation: {$totalOccupied}\n\nDetail Meja:\n";
+
+                foreach ($zones as $zid => $zinfo) {
+                    $status = $zinfo['status'] ?? 'TIDAK_DI_TEMPAT';
+                    $person = $zinfo['person_name'] ?? 'Tidak Dikenal';
+                    $away = round($zinfo['away_duration_seconds'] ?? 0);
+                    $presence = round($zinfo['presence_duration_seconds'] ?? 0);
+
+                    $summary .= "- Meja [{$zid}]: Status={$status}, Pegawai Teridentifikasi={$person}";
+                    if ($status === 'BEKERJA') {
+                        $summary .= " (Sudah bekerja: " . round($presence / 60, 1) . " menit)\n";
+                    } else {
+                        $summary .= " (Telah meninggalkan meja: " . round($away / 60, 1) . " menit)\n";
+                    }
+                }
+
+                return $summary;
+            }
+        } catch (\Throwable $e) {
+            // Stream server offline
+        }
+
+        return "Status Kamera: Sedang standby / offline. Data presensi diambil dari database terakhir.";
+    }
+
+    /**
+     * Ambil konteks karyawan dari database
+     */
+    protected function fetchEmployeeContext(string $senderNumber): string
+    {
+        try {
+            $employees = Employee::all();
+            $lines = ["Daftar Pegawai Terdaftar:"];
+            $senderInfo = "";
+
+            foreach ($employees as $emp) {
+                $lines[] = "- {$emp->name} ({$emp->position}, Meja: " . ($emp->assigned_zone_id ?: 'Belum diatur') . ", WA: {$emp->phone_number})";
+
+                if (!empty($senderNumber) && !empty($emp->phone_number)) {
+                    $cleanSender = preg_replace('/[^0-9]/', '', $senderNumber);
+                    $cleanEmp = preg_replace('/[^0-9]/', '', $emp->phone_number);
+                    if (str_ends_with($cleanSender, substr($cleanEmp, -8))) {
+                        $senderInfo = "Pengirim Chat Ini Adalah: {$emp->name} ({$emp->position})";
+                    }
+                }
+            }
+
+            if (!empty($senderInfo)) {
+                $lines[] = "\n" . $senderInfo;
+            }
+
+            return implode("\n", $lines);
+        } catch (\Throwable $e) {
+            return "Data pegawai: Tidak dapat dimuat.";
+        }
     }
 }
