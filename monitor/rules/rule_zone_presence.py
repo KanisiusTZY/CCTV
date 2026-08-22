@@ -308,7 +308,8 @@ class RuleZonePresence:
                 self.total_away_seconds = {}
 
             # Accumulate cumulative frame time (~0.1s per frame)
-            if self.status[zone_id] == "BEKERJA":
+            zone_stat = self.status.get(zone_id, "TIDAK_DI_TEMPAT")
+            if zone_stat == "BEKERJA":
                 self.total_occupied_seconds[zone_id] = self.total_occupied_seconds.get(zone_id, 0.0) + 0.1
             else:
                 self.total_away_seconds[zone_id] = self.total_away_seconds.get(zone_id, 0.0) + 0.1
@@ -317,12 +318,12 @@ class RuleZonePresence:
                 "zone_id":                 zone_id,
                 "chair_bbox":              chair_bbox,
                 "track_id":                self.prev_zone_assignments.get(zone_id),
-                "status":                  self.status[zone_id],
-                "matched_upper_body_bbox": self.matched_bbox[zone_id],
+                "status":                  zone_stat,
+                "matched_upper_body_bbox": self.matched_bbox.get(zone_id),
                 "verified_employee_name":  verified_name,
-                "away_start_time":         self.away_start_time[zone_id],
-                "away_duration_seconds":   self.total_away_seconds[zone_id],
-                "occupied_duration":       self.total_occupied_seconds[zone_id],
+                "away_start_time":         self.away_start_time.get(zone_id),
+                "away_duration_seconds":   self.total_away_seconds.get(zone_id, 0.0),
+                "occupied_duration":       self.total_occupied_seconds.get(zone_id, 0.0),
                 "empty_duration":          empty_duration,
             }
 
