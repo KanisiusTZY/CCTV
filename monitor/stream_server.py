@@ -162,13 +162,7 @@ def video_processing_thread():
             # Render Visualizer
             annotated_frame = visualizer.render(frame, cached_results, fps=current_fps)
             
-            # Watermark Info
-            bekerja_count = sum(1 for z in cached_results.values() if z.get("status") == "BEKERJA")
-            away_count = len(cached_results) - bekerja_count
-            cv2.putText(annotated_frame, f"BEKERJA: {bekerja_count}", (frame.shape[1] - 320, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 0), 2)
-            cv2.putText(annotated_frame, f"TIDAK DI TEMPAT: {away_count}", (frame.shape[1] - 180, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 255), 2)
-            cv2.putText(annotated_frame, f"FPS: {current_fps:.1f}", (frame.shape[1] - 80, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
-
+            
             ret_jpg, jpeg = cv2.imencode('.jpg', annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
             if ret_jpg:
                 with lock:
