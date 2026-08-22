@@ -13,7 +13,7 @@
             </div>
             <div>
                 <h2 class="text-base font-bold text-white">Registrasi & Database Wajah Pegawai</h2>
-                <p class="text-xs text-gray-400">Daftarkan foto wajah karyawan agar teridentifikasi otomatis oleh model AI (InsightFace)</p>
+                <p class="text-xs text-gray-400">Daftarkan dan atur penempatan meja kerja pegawai agar teridentifikasi otomatis oleh model AI</p>
             </div>
         </div>
 
@@ -51,7 +51,7 @@
             <div class="glass-panel p-5 rounded-2xl border border-gray-800">
                 <h3 class="text-sm font-bold text-white mb-4 flex items-center gap-2">
                     <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
-                    Form Pendaftaran Pegawai
+                    Form Pendaftaran Pegawai Baru
                 </h3>
 
                 <form action="{{ route('admin.employees.store') }}" method="POST" enctype="multipart/form-data" class="space-y-4">
@@ -168,13 +168,24 @@
                                         @endif
                                     </td>
                                     <td class="px-5 py-3 text-right">
-                                        <form action="{{ route('admin.employees.destroy', $emp->id) }}" method="POST" onsubmit="return confirm('Hapus pegawai {{ $emp->name }} beserta database wajahnya?')">
-                                            @csrf
-                                            @method('DELETE')
-                                            <button type="submit" class="p-2 text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition" title="Hapus Pegawai">
-                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                        <div class="flex items-center justify-end gap-1.5">
+                                            <!-- Tombol Edit Meja & Data -->
+                                            <button type="button" 
+                                                    onclick="openEditModal({{ $emp->id }}, '{{ addslashes($emp->name) }}', '{{ addslashes($emp->position ?? '') }}', '{{ $emp->assigned_zone_id ?? '' }}', '{{ asset('uploads/employees/' . $emp->photo_filename) }}')"
+                                                    class="p-2 text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 rounded-lg transition" 
+                                                    title="Edit Data & Meja Pegawai">
+                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
                                             </button>
-                                        </form>
+
+                                            <!-- Tombol Hapus -->
+                                            <form action="{{ route('admin.employees.destroy', $emp->id) }}" method="POST" onsubmit="return confirm('Hapus pegawai {{ $emp->name }} beserta database wajahnya?')">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button type="submit" class="p-2 text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition" title="Hapus Pegawai">
+                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                                </button>
+                                            </form>
+                                        </div>
                                     </td>
                                 </tr>
                             @empty
@@ -190,6 +201,73 @@
             </div>
         </div>
 
+    </div>
+</div>
+
+<!-- Modal Edit Data & Meja Pegawai -->
+<div id="editModal" class="hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="glass-panel w-full max-w-lg rounded-2xl border border-gray-800 p-6 space-y-4 shadow-2xl relative">
+        <div class="flex items-center justify-between pb-3 border-b border-gray-800">
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                Edit Data & Penugasan Meja Pegawai
+            </h3>
+            <button type="button" onclick="closeEditModal()" class="text-gray-400 hover:text-white p-1 rounded-lg">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+
+        <form id="editForm" method="POST" enctype="multipart/form-data" class="space-y-4">
+            @csrf
+            @method('PUT')
+
+            <div>
+                <label class="text-xs text-gray-400 mb-1.5 block">Nama Lengkap Pegawai <span class="text-rose-400">*</span></label>
+                <input type="text" 
+                       id="editName" 
+                       name="name" 
+                       required 
+                       class="w-full bg-gray-900 border border-gray-700 text-white text-xs rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500">
+            </div>
+
+            <div>
+                <label class="text-xs text-gray-400 mb-1.5 block">Posisi / Jabatan</label>
+                <input type="text" 
+                       id="editPosition" 
+                       name="position" 
+                       class="w-full bg-gray-900 border border-gray-700 text-white text-xs rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500">
+            </div>
+
+            <div>
+                <label class="text-xs text-indigo-300 font-semibold mb-1.5 block">📍 Pindahkan / Assign ke Meja Kerja:</label>
+                <select id="editZone" name="assigned_zone_id" class="w-full bg-gray-900 border border-indigo-500/50 text-white text-xs rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-400">
+                    <option value="">-- Fleksibel / Belum Ditugaskan --</option>
+                    @foreach($zones as $z)
+                        <option value="{{ $z->zone_id }}">{{ $z->zone_name }} ({{ $z->zone_id }})</option>
+                    @endforeach
+                </select>
+            </div>
+
+            <div>
+                <label class="text-xs text-gray-400 mb-1.5 block">Ganti Foto Wajah (Opsional)</label>
+                <div class="flex items-center gap-3">
+                    <img id="editCurrentPhoto" class="w-12 h-12 rounded-xl object-cover border border-gray-700">
+                    <input type="file" 
+                           name="photo" 
+                           accept="image/*" 
+                           class="w-full bg-gray-900 border border-gray-700 text-gray-300 text-xs rounded-xl file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500">
+                </div>
+            </div>
+
+            <div class="flex items-center justify-end gap-3 pt-3 border-t border-gray-800">
+                <button type="button" onclick="closeEditModal()" class="px-4 py-2.5 bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-semibold rounded-xl transition">
+                    Batal
+                </button>
+                <button type="submit" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-xl transition shadow-lg shadow-indigo-600/20">
+                    Simpan Perubahan
+                </button>
+            </div>
+        </form>
     </div>
 </div>
 @endsection
@@ -208,6 +286,20 @@
             }
             reader.readAsDataURL(input.files[0]);
         }
+    }
+
+    function openEditModal(id, name, position, zoneId, photoUrl) {
+        const form = document.getElementById('editForm');
+        form.action = '{{ url("admin/employees") }}/' + id;
+        document.getElementById('editName').value = name;
+        document.getElementById('editPosition').value = position;
+        document.getElementById('editZone').value = zoneId;
+        document.getElementById('editCurrentPhoto').src = photoUrl;
+        document.getElementById('editModal').classList.remove('hidden');
+    }
+
+    function closeEditModal() {
+        document.getElementById('editModal').classList.add('hidden');
     }
 </script>
 @endsection
