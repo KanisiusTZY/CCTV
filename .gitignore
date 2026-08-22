@@ -1,0 +1,42 @@
+﻿# === Laravel ===
+/vendor/
+/node_modules/
+/.env
+/.env.backup
+/storage/*.key
+/storage/logs/
+/storage/framework/cache/*
+/storage/framework/sessions/*
+/storage/framework/views/*
+/bootstrap/cache/
+composer.lock
+
+# === Python AI Engine ===
+__pycache__/
+*.pyc
+*.pyo
+scratch/
+
+# === Large media & model weights ===
+*.mp4
+*.avi
+*.mov
+*.pt
+*.onnx
+*.engine
+
+# === Documents & Presentations ===
+*.docx
+*.pptx
+~$*.pptx
+Dokumen_Rancang_Bangun_Monitoring_Pegawai.md
+generate_masterplan_ppt.py
+generate_ppt_yolo11.py
+generate_progress_ppt.py
+
+# === IDE ===
+.vscode/
+.idea/
+
+# === Template folder ===
+Template/
