@@ -1,3 +1,31 @@
+import sys
+try:
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    if hasattr(sys.stderr, 'reconfigure'):
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
+
+class SafeStdout:
+    def __init__(self, stream):
+        self.stream = stream
+    def write(self, data):
+        try:
+            if self.stream:
+                self.stream.write(data)
+                self.stream.flush()
+        except OSError:
+            pass
+    def flush(self):
+        try:
+            if self.stream:
+                self.stream.flush()
+        except OSError:
+            pass
+
+sys.stdout = SafeStdout(sys.stdout)
+sys.stderr = SafeStdout(sys.stderr)
 import warnings
 warnings.filterwarnings('ignore', category=FutureWarning)
 try:

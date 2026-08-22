@@ -23,7 +23,7 @@ class ServeAllCommand extends Command
         $pythonPort = $this->option('python-port');
 
         $this->info("=" . str_repeat("=", 58));
-        $this->info(" 🚀 MEMULAI SISTEM MONITORING KEHADIRAN PEGOWAI CCTV ");
+        $this->info(" ðŸš€ MEMULAI SISTEM MONITORING KEHADIRAN PEGOWAI CCTV ");
         $this->info("  - Web Dashboard : http://127.0.0.1:{$webPort}/dashboard");
         $this->info("  - Python Stream : http://127.0.0.1:{$pythonPort}/video_feed");
         $this->info(" Press Ctrl+C to STOP BOTH (Matikan Semua Server)");
@@ -58,8 +58,7 @@ class ServeAllCommand extends Command
 
             // Jalankan Python Stream Server secara independen di background (dengan -u unbuffered output)
             if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
-                $cmd = "cmd /c \"cd /d \"{$normScriptDir}\" && \"{$pythonExec}\" -u \"{$normScriptPath}\" --port {$pythonPort}\"";
-                pclose(popen("start /B {$cmd}", "r"));
+                pclose(popen("start /B \"\" \"{$pythonExec}\" -u \"{$normScriptPath}\" --port {$pythonPort}", "r"));
             } else {
                 exec("cd \"{$scriptDir}\" && python3 -u \"{$scriptPath}\" --port {$pythonPort} > /dev/null 2>&1 &");
             }
