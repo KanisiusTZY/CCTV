@@ -179,10 +179,21 @@ class InsightFaceRecognizer:
             hy2 = min(h_frame, y1 + head_h)
 
             head_crop = frame[hy1:hy2, hx1:hx2]
-            if head_crop.size == 0 or head_crop.shape[0] < 20 or head_crop.shape[1] < 20:
-                return None, 0.0
+            if head_crop.size > 0 and head_crop.shape[0] >= 20 and head_crop.shape[1] >= 20:
+                match, conf = self.match_face(head_crop)
+                if match:
+                    return match, conf
 
-            return self.match_face(head_crop)
+            # Fallback jika crop kepala terlalu sempit: gunakan full upper body crop
+            ux1 = max(0, x1 - int(box_w * 0.15))
+            uy1 = max(0, y1 - int(box_h * 0.15))
+            ux2 = min(w_frame, x2 + int(box_w * 0.15))
+            uy2 = min(h_frame, y2 + int(box_h * 0.15))
+            full_crop = frame[uy1:uy2, ux1:ux2]
+            if full_crop.size > 0:
+                return self.match_face(full_crop)
+
+            return None, 0.0
 
         except Exception:
             return None, 0.0

@@ -306,9 +306,7 @@ class RuleZonePresence:
                     if v_name:
                         verified_name = v_name
                         self.verified_identity_cache[zone_id] = verified_name
-                    else:
-                        self.verified_identity_cache[zone_id] = None
-                        verified_name = None
+                    # Pertahankan cache identitas yang sudah terverifikasi selama pegawai masih di meja
 
             if not hasattr(self, 'total_occupied_seconds'):
                 self.total_occupied_seconds = {}
