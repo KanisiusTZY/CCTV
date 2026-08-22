@@ -60,6 +60,7 @@ class RuleZonePresence:
 
         self.verified_identity_cache = defaultdict(lambda: None)
         self.last_identity_check_time = defaultdict(lambda: 0.0)
+        self.track_identities = defaultdict(lambda: None)
         self.total_occupied_seconds = defaultdict(lambda: 0.0)
         self.total_away_seconds = defaultdict(lambda: 0.0)
 
@@ -295,8 +296,9 @@ class RuleZonePresence:
             if self.status[zone_id] == "TIDAK_DI_TEMPAT" and self.away_start_time[zone_id] is not None:
                 away_duration = max(0.0, current_time - self.away_start_time[zone_id])
 
-            # Layer Verifikasi Identitas Wajah Opsional (Interval 1.0s untuk deteksi cepat & FPS 20+ FPS)
-            verified_name = self.verified_identity_cache.get(zone_id)
+            # Layer Verifikasi Identitas Wajah: Menggunakan Dual-Cache (Track ID + Zone)
+            curr_track_id = self.prev_zone_assignments.get(zone_id)
+            verified_name = (self.track_identities.get(curr_track_id) if curr_track_id is not None else None) or self.verified_identity_cache.get(zone_id)
             last_check = self.last_identity_check_time.get(zone_id, 0.0)
 
             if face_recognizer and self.status[zone_id] == "BEKERJA" and self.matched_bbox[zone_id] is not None:
@@ -306,7 +308,8 @@ class RuleZonePresence:
                     if v_name:
                         verified_name = v_name
                         self.verified_identity_cache[zone_id] = verified_name
-                    # Pertahankan cache identitas yang sudah terverifikasi selama pegawai masih di meja
+                        if curr_track_id is not None:
+                            self.track_identities[curr_track_id] = verified_name
 
             if not hasattr(self, 'total_occupied_seconds'):
                 self.total_occupied_seconds = {}

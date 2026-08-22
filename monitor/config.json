@@ -10,7 +10,7 @@
     "miss_tolerance_seconds": 1,
     "face_recognition": {
         "model_name": "buffalo_s",
-        "similarity_threshold": 0.25,
+        "similarity_threshold": 0.22,
         "use_gpu": false
     },
     "chair_zones": [
