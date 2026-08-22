@@ -68,7 +68,7 @@
                 <!-- Video Screen Wrapper -->
                 <div id="videoContainer" class="relative aspect-video bg-black overflow-hidden flex items-center justify-center">
                     <img id="streamFeed" 
-                         src="http://localhost:5000/video_feed" 
+                         src="http://localhost:5000/video_feed?t={{ time() }}" 
                          alt="AI CCTV Stream Feed" 
                          class="w-full h-full object-contain"
                          onerror="this.style.display='none'; document.getElementById('offlineOverlay').classList.remove('hidden');">
@@ -83,7 +83,7 @@
                     
                     <!-- Live Watermark Overlay -->
                     <div class="absolute top-4 left-4 pointer-events-none bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg border border-white/10 text-white text-xs font-mono">
-                        REC • <span id="liveClock">00:00:00</span>
+                        REC â€¢ <span id="liveClock">00:00:00</span>
                     </div>
                 </div>
             </div>

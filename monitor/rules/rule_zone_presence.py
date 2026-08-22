@@ -106,7 +106,13 @@ class RuleZonePresence:
         self.prev_zone_assignments.clear()
         self.verified_identity_cache.clear()
         self.last_identity_check_time.clear()
+        self.total_occupied_seconds = {}
+        self.total_away_seconds = {}
         self.frame_count = 0
+        for z in self.chair_zones:
+            zid = z.get("id")
+            if zid:
+                self.status[zid] = "TIDAK_DI_TEMPAT"
 
     def process(self, frame, detections: list, current_time: float = None, face_recognizer = None):
         """
@@ -329,7 +335,7 @@ class RuleZonePresence:
 
             # LOGGING PERUBAHAN STATE UNIVERSAL
             curr_trk = self.prev_zone_assignments.get(zone_id)
-            curr_stat = self.status[zone_id]
+            curr_stat = self.status.get(zone_id, "TIDAK_DI_TEMPAT")
 
             if not hasattr(self, "last_logged_trk"):
                 self.last_logged_trk = {}

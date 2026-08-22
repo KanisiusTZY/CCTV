@@ -155,14 +155,18 @@ def video_processing_thread():
             # Simpan frame bersih untuk snapshot Admin Zone Drawer
             ret_clean_jpg, clean_jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
 
-            # Frame Skipping (YOLO tiap 3 frame)
-            if frame_count % 3 == 0 or not cached_detections:
-                detections = detector.detect(frame)
-                cached_detections = detections
-                cached_results = rule_engine.process(frame, detections, current_time=simulated_time, face_recognizer=face_recognizer)
-            else:
-                detections = cached_detections
-                cached_results = rule_engine.process(frame, detections, current_time=simulated_time, face_recognizer=face_recognizer)
+            try:
+                # Frame Skipping (YOLO tiap 3 frame)
+                if frame_count % 3 == 0 or not cached_detections:
+                    detections = detector.detect(frame)
+                    cached_detections = detections
+                    cached_results = rule_engine.process(frame, detections, current_time=simulated_time, face_recognizer=face_recognizer)
+                else:
+                    detections = cached_detections
+                    cached_results = rule_engine.process(frame, detections, current_time=simulated_time, face_recognizer=face_recognizer)
+            except Exception as e:
+                print(f"[ERROR StreamServer Loop] {e}")
+                cached_results = {}
 
             # Render Visualizer
             annotated_frame = visualizer.render(frame, cached_results, fps=current_fps)
@@ -188,18 +192,20 @@ def video_processing_thread():
 
 def generate_frames():
     """Generator Frame MJPEG untuk dikirim ke Browser via HTTP"""
-    global latest_frame, lock
+    global latest_frame, lock, is_running
+    last_sent = None
     while is_running:
         with lock:
-            if latest_frame is None:
-                frame_bytes = None
-            else:
-                frame_bytes = latest_frame
+            frame_bytes = latest_frame
         
-        if frame_bytes is not None:
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-        time.sleep(0.04)
+        if frame_bytes is not None and frame_bytes != last_sent:
+            last_sent = frame_bytes
+            try:
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+            except Exception:
+                break
+        time.sleep(0.02)
 
 @app.route('/video_feed')
 def video_feed():
