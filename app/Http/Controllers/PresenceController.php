@@ -7,27 +7,20 @@ use Illuminate\Support\Facades\Http;
 use App\Models\WorkstationZone;
 use App\Models\PresenceEventLog;
 use App\Models\DailyZoneSummary;
+use App\Models\Employee;
 
 class PresenceController extends Controller
 {
-    /**
-     * URL Python Stream Server Engine
-     */
     private string $pythonApiUrl = 'http://localhost:5000';
 
-    /**
-     * Memastikan Python AI Stream Server berjalan di background (port 5000)
-     */
     private function ensurePythonEngineRunning()
     {
         try {
-            // Cek apakah port 5000 sudah merespon
             $response = Http::timeout(1)->get($this->pythonApiUrl . '/api/status');
             if ($response->successful()) {
-                return; // Server sudah aktif
+                return;
             }
         } catch (\Exception $e) {
-            // Python Engine belum aktif -> Jalankan secara otomatis di background
             $scriptPath = base_path('monitor/stream_server.py');
             if (!file_exists($scriptPath)) {
                 $scriptPath = 'd:/monitor/stream_server.py';
@@ -39,27 +32,60 @@ class PresenceController extends Controller
                 } else {
                     exec("python3 \"{$scriptPath}\" --port 5000 > /dev/null 2>&1 &");
                 }
-                sleep(1); // Jeda 1 detik agar engine sempat inisialisasi
+                sleep(1);
             }
         }
     }
 
     /**
-     * Menampilkan Dashboard Utama Monitoring Kehadiran Live
+     * Memperkaya data zona dari Python dengan data pegawai dari database
      */
+    private function enrichZonesWithEmployeeData(array $zones)
+    {
+        try {
+            $dbZones = WorkstationZone::with('employee')->get()->keyBy('zone_id');
+            foreach ($zones as $zoneId => &$zoneData) {
+                $dbZone = $dbZones->get($zoneId);
+                if ($dbZone) {
+                    $zoneData['zone_name'] = $dbZone->zone_name;
+                    if ($dbZone->employee) {
+                        $zoneData['employee_name'] = $dbZone->employee->name;
+                        $zoneData['employee_position'] = $dbZone->employee->position ?? 'Pegawai';
+                        $zoneData['employee_photo'] = $dbZone->employee->photo_filename;
+                        $zoneData['display_title'] = $dbZone->employee->name;
+                        $zoneData['display_subtitle'] = $dbZone->zone_name . ($dbZone->employee->position ? ' • ' . $dbZone->employee->position : '');
+                    } else {
+                        $zoneData['employee_name'] = null;
+                        $zoneData['employee_position'] = null;
+                        $zoneData['employee_photo'] = null;
+                        $zoneData['display_title'] = $dbZone->zone_name;
+                        $zoneData['display_subtitle'] = 'Belum Ditugaskan';
+                    }
+                } else {
+                    $zoneData['zone_name'] = 'Meja ' . str_replace('chair_', '', $zoneId);
+                    $zoneData['employee_name'] = null;
+                    $zoneData['employee_position'] = null;
+                    $zoneData['employee_photo'] = null;
+                    $zoneData['display_title'] = $zoneData['zone_name'];
+                    $zoneData['display_subtitle'] = 'Meja Kerja';
+                }
+            }
+            unset($zoneData);
+        } catch (\Exception $e) {}
+
+        return $zones;
+    }
+
     public function dashboard()
     {
-        // 1. Cek & otomatis jalankan Python Engine jika belum aktif
         $this->ensurePythonEngineRunning();
 
-        // 2. Ambil data status real-time dari Python REST API
         $streamStatus = [];
         try {
             $response = Http::timeout(3)->get($this->pythonApiUrl . '/api/status');
             if ($response->successful()) {
                 $streamStatus = $response->json();
                 
-                // Sinkronkan koordinat boks meja dari Python ke DB secara otomatis (UPSERT)
                 if (!empty($streamStatus['zones'])) {
                     $configZones = [];
                     foreach ($streamStatus['zones'] as $zId => $zData) {
@@ -68,6 +94,7 @@ class PresenceController extends Controller
                         }
                     }
                     WorkstationZone::syncFromConfig($configZones);
+                    $streamStatus['zones'] = $this->enrichZonesWithEmployeeData($streamStatus['zones']);
                 }
             }
         } catch (\Exception $e) {
@@ -80,7 +107,6 @@ class PresenceController extends Controller
             ];
         }
 
-        // 3. Ambil log event & summary dari database jika DB sudah di-migrate
         $recentLogs = collect();
         $todaySummaries = collect();
         try {
@@ -92,24 +118,21 @@ class PresenceController extends Controller
             $todaySummaries = DailyZoneSummary::with('zone')
                 ->where('date', date('Y-m-d'))
                 ->get();
-        } catch (\Exception $e) {
-            // Database belum dibuat / belum di-migrate, abaikan error agar dashboard tetap tampil
-        }
+        } catch (\Exception $e) {}
 
         return view('presence.dashboard', compact('streamStatus', 'recentLogs', 'todaySummaries'));
     }
 
-    /**
-     * API Proxy untuk memperbarui data status real-time via AJAX di Blade & Auto-Sync ke DB
-     */
     public function getLiveStatus()
     {
         try {
             $response = Http::timeout(2)->get($this->pythonApiUrl . '/api/status');
             $data = $response->json();
 
-            // Auto-sync ke DB (setiap 3 detik sekali agar super kencang & tanpa error SQL)
             if (!empty($data['zones'])) {
+                // Perkaya dengan data penugasan pegawai dari MySQL
+                $data['zones'] = $this->enrichZonesWithEmployeeData($data['zones']);
+
                 $lastSync = cache('last_db_presence_sync', 0);
                 if (time() - $lastSync >= 3) {
                     cache(['last_db_presence_sync' => time()], 5);
@@ -137,9 +160,6 @@ class PresenceController extends Controller
         }
     }
 
-    /**
-     * Mengganti sumber video (File MP4 / RTSP CCTV Stream)
-     */
     public function changeSource(Request $request)
     {
         $request->validate([
@@ -154,14 +174,10 @@ class PresenceController extends Controller
         }
     }
 
-    /**
-     * Menampilkan Halaman Laporan Rekapitulasi Presensi HRD
-     */
     public function reports(Request $request)
     {
         $selectedDate = $request->get('date', date('Y-m-d'));
 
-        // Sync data real-time dari Python AI Engine sebelum merender halaman laporan
         try {
             $pyRes = Http::timeout(2)->get($this->pythonApiUrl . '/api/status');
             if ($pyRes->successful()) {
@@ -184,18 +200,14 @@ class PresenceController extends Controller
                     }
                 }
             }
-        } catch (\Exception $e) {
-            // Abaikan error jika Python offline
-        }
+        } catch (\Exception $e) {}
 
         $summaries = collect();
         try {
-            $summaries = DailyZoneSummary::with('zone')
+            $summaries = DailyZoneSummary::with(['zone.employee'])
                 ->where('date', $selectedDate)
                 ->get();
-        } catch (\Exception $e) {
-            // Database belum di-migrate
-        }
+        } catch (\Exception $e) {}
 
         return view('presence.reports', compact('summaries', 'selectedDate'));
     }

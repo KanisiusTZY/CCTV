@@ -10,7 +10,7 @@
             <div class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
             <div>
                 <h2 class="text-base font-bold text-white">Live Monitoring Stream</h2>
-                <p class="text-xs text-gray-400">Deteksi realtime zona meja kerja & rekognisi wajah</p>
+                <p class="text-xs text-gray-400">Deteksi realtime zona meja kerja & rekognisi wajah pegawai</p>
             </div>
         </div>
         <div class="flex flex-wrap items-center gap-3">
@@ -90,10 +90,17 @@
                         <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
                         Status Presensi Meja Kerja (Workstation Zones)
                     </h2>
-                    <a href="{{ route('admin.zones') }}" class="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
-                        Edit Zona
-                    </a>
+                    <div class="flex items-center gap-3">
+                        <a href="{{ route('admin.employees') }}" class="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                            Atur Penugasan Pegawai
+                        </a>
+                        <span class="text-gray-600">|</span>
+                        <a href="{{ route('admin.zones') }}" class="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                            Edit Zona
+                        </a>
+                    </div>
                 </div>
 
                 <!-- Cards Grid -->
@@ -101,20 +108,42 @@
                     @forelse($streamStatus['zones'] ?? [] as $zoneId => $zone)
                         @php
                             $isWorking = ($zone['status'] ?? '') === 'BEKERJA';
+                            $empName = $zone['employee_name'] ?? null;
+                            $empPhoto = $zone['employee_photo'] ?? null;
+                            $mainTitle = $empName ? $empName : ($zone['zone_name'] ?? 'Meja ' . str_replace('chair_', '', $zoneId));
+                            $subTitle = $empName 
+                                ? (($zone['zone_name'] ?? str_replace('_', ' ', $zoneId)) . ' • ' . ($zone['employee_position'] ?? 'Pegawai'))
+                                : (str_replace('_', ' ', $zoneId) . ' • Belum Ditugaskan');
                         @endphp
                         <div id="card-{{ $zoneId }}" class="glass-panel p-4 rounded-xl border transition-all duration-300 hover:translate-y-[-2px] {{ $isWorking ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-rose-500/30 bg-rose-500/5' }}">
-                            <div class="flex items-center justify-between mb-2">
-                                <span class="text-xs font-bold font-mono uppercase text-gray-300">{{ str_replace('_', ' ', $zoneId) }}</span>
-                                <span id="badge-{{ $zoneId }}" class="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider {{ $isWorking ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30' }}">
+                            <div class="flex items-center justify-between mb-3">
+                                <div class="flex items-center gap-2.5">
+                                    @if($empPhoto)
+                                        <img id="photo-{{ $zoneId }}" 
+                                             src="{{ asset('uploads/employees/' . $empPhoto) }}" 
+                                             alt="{{ $mainTitle }}" 
+                                             class="w-9 h-9 rounded-xl object-cover border border-gray-700 shadow"
+                                             onerror="this.src='https://ui-avatars.com/api/?name={{ urlencode($mainTitle) }}&background=6366f1&color=fff'">
+                                    @else
+                                        <div id="photo-{{ $zoneId }}" class="w-9 h-9 rounded-xl bg-gray-800 text-gray-400 flex items-center justify-center font-bold text-xs border border-gray-700">
+                                            {{ strtoupper(substr($mainTitle, 0, 2)) }}
+                                        </div>
+                                    @endif
+                                    <div>
+                                        <div id="name-{{ $zoneId }}" class="text-sm font-bold text-white leading-tight">
+                                            {{ $mainTitle }}
+                                        </div>
+                                        <div id="sub-{{ $zoneId }}" class="text-[11px] text-gray-400">
+                                            {{ $subTitle }}
+                                        </div>
+                                    </div>
+                                </div>
+                                <span id="badge-{{ $zoneId }}" class="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0 {{ $isWorking ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30' }}">
                                     {{ $isWorking ? 'BEKERJA' : 'TIDAK DI TEMPAT' }}
                                 </span>
                             </div>
-                            
-                            <div class="text-sm font-semibold text-white mb-1">
-                                {{ $zone['zone_name'] ?? 'Meja ' . str_replace('chair_', '', $zoneId) }}
-                            </div>
 
-                            <div class="space-y-1.5 text-xs text-gray-400 mt-3 pt-2.5 border-t border-gray-800">
+                            <div class="space-y-1.5 text-xs text-gray-400 pt-2.5 border-t border-gray-800">
                                 <div class="flex items-center justify-between">
                                     <span class="flex items-center gap-1.5 text-emerald-400 font-medium">
                                         <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
@@ -147,7 +176,7 @@
 
         </section>
 
-        <!-- RIGHT COLUMN: Control Panel & Live Activity Log (4 Cols) -->
+        <!-- RIGHT COLUMN: Control Panel & Quick Links (4 Cols) -->
         <aside class="lg:col-span-4 space-y-6">
 
             <!-- Video Source Switcher Panel -->
@@ -163,8 +192,8 @@
                         <label class="text-xs text-gray-400 mb-1 block">Pilih / Ketik Sumber Video:</label>
                         <input type="text" 
                                name="source" 
-                               value="{{ $streamStatus['source'] ?? 'f.mp4' }}" 
-                               placeholder="f.mp4 atau rtsp://192.168.1.100:554/stream"
+                               value="{{ $streamStatus['source'] ?? 'h.mp4' }}" 
+                               placeholder="h.mp4 atau rtsp://192.168.1.100:554/stream"
                                class="w-full bg-gray-900 border border-gray-700 text-white text-xs rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500">
                     </div>
                     <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold py-2.5 rounded-xl transition shadow-lg shadow-indigo-600/20">
@@ -271,6 +300,14 @@
                 Object.keys(data.zones).forEach(zoneId => {
                     const zone = data.zones[zoneId];
                     const isWorking = zone.status === 'BEKERJA';
+                    const empName = zone.employee_name || null;
+                    const empPhoto = zone.employee_photo || null;
+                    const empPos = zone.employee_position || 'Pegawai';
+                    const mainTitle = empName ? empName : (zone.zone_name || ('Meja ' + zoneId.replace('chair_', '')));
+                    const subTitle = empName 
+                        ? ((zone.zone_name || zoneId.replace('_', ' ')) + ' • ' + empPos)
+                        : (zoneId.replace('_', ' ') + ' • Belum Ditugaskan');
+
                     let card = document.getElementById(`card-${zoneId}`);
 
                     if (!card && gridContainer) {
@@ -280,18 +317,28 @@
                             isWorking ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-rose-500/30 bg-rose-500/5'
                         }`;
                         cardDiv.innerHTML = `
-                            <div class="flex items-center justify-between mb-2">
-                                <span class="text-xs font-bold font-mono uppercase text-gray-300">${zoneId.replace('_', ' ')}</span>
-                                <span id="badge-${zoneId}" class="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                            <div class="flex items-center justify-between mb-3">
+                                <div class="flex items-center gap-2.5">
+                                    ${empPhoto 
+                                        ? `<img id="photo-${zoneId}" src="/uploads/employees/${empPhoto}" alt="${mainTitle}" class="w-9 h-9 rounded-xl object-cover border border-gray-700 shadow">`
+                                        : `<div id="photo-${zoneId}" class="w-9 h-9 rounded-xl bg-gray-800 text-gray-400 flex items-center justify-center font-bold text-xs border border-gray-700">${mainTitle.substring(0,2).toUpperCase()}</div>`
+                                    }
+                                    <div>
+                                        <div id="name-${zoneId}" class="text-sm font-bold text-white leading-tight">
+                                            ${mainTitle}
+                                        </div>
+                                        <div id="sub-${zoneId}" class="text-[11px] text-gray-400">
+                                            ${subTitle}
+                                        </div>
+                                    </div>
+                                </div>
+                                <span id="badge-${zoneId}" class="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0 ${
                                     isWorking ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
                                 }">
                                     ${isWorking ? 'BEKERJA' : 'TIDAK DI TEMPAT'}
                                 </span>
                             </div>
-                            <div class="text-sm font-semibold text-white mb-1">
-                                ${zone.zone_name || ('Meja ' + zoneId.replace('chair_', ''))}
-                            </div>
-                            <div class="space-y-1.5 text-xs text-gray-400 mt-3 pt-2.5 border-t border-gray-800">
+                            <div class="space-y-1.5 text-xs text-gray-400 pt-2.5 border-t border-gray-800">
                                 <div class="flex items-center justify-between">
                                     <span class="flex items-center gap-1.5 text-emerald-400 font-medium">
                                         <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
@@ -317,6 +364,8 @@
                     }
 
                     const badge = document.getElementById(`badge-${zoneId}`);
+                    const nameEl = document.getElementById(`name-${zoneId}`);
+                    const subEl = document.getElementById(`sub-${zoneId}`);
                     const workSpan = document.getElementById(`time-work-${zoneId}`);
                     const awaySpan = document.getElementById(`time-away-${zoneId}`);
 
@@ -324,10 +373,13 @@
                         card.className = `glass-panel p-4 rounded-xl border transition-all duration-300 hover:translate-y-[-2px] ${
                             isWorking ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-rose-500/30 bg-rose-500/5'
                         }`;
-                        badge.className = `text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                        badge.className = `text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0 ${
                             isWorking ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
                         }`;
                         badge.innerText = isWorking ? 'BEKERJA' : 'TIDAK DI TEMPAT';
+
+                        if (nameEl) nameEl.innerText = mainTitle;
+                        if (subEl) subEl.innerText = subTitle;
 
                         if (workSpan) {
                             workSpan.innerText = fmtDuration(zone.occupied_duration || 0);
