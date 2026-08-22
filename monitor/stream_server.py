@@ -154,10 +154,10 @@ def video_processing_thread():
             if frame_count % 3 == 0 or not cached_detections:
                 detections = detector.detect(frame)
                 cached_detections = detections
-                cached_results = rule_engine.process_frame(detections, simulated_time, frame=frame, face_recognizer=face_recognizer)
+                cached_results = rule_engine.process(frame, detections, current_time=simulated_time, face_recognizer=face_recognizer)
             else:
                 detections = cached_detections
-                cached_results = rule_engine.process_frame(detections, simulated_time, frame=frame, face_recognizer=face_recognizer)
+                cached_results = rule_engine.process(frame, detections, current_time=simulated_time, face_recognizer=face_recognizer)
 
             # Render Visualizer
             annotated_frame = visualizer.draw(frame, cached_results, rule_engine.chair_zones, detections)
