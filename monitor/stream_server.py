@@ -1,4 +1,4 @@
-﻿import argparse
+import argparse
 import cv2
 import json
 import numpy as np
@@ -79,7 +79,7 @@ def init_engine(source_override=None):
     # Inisialisasi Detektor Person
     model_name = config_data.get("model_name", "yolo11n.pt")
     detector = PersonDetector(
-        model_path=model_name,
+        model_name=model_name,
         confidence=config_data.get("confidence", 0.13),
         imgsz=config_data.get("imgsz", 640)
     )
