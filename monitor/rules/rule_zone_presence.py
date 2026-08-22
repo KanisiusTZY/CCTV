@@ -1,3 +1,4 @@
+from collections import defaultdict
 import time
 import numpy as np
 
@@ -48,19 +49,24 @@ class RuleZonePresence:
         """
         self.update_config(config)
 
-        self.occupied_since  = {}   # Timestamp saat deteksi berturut-turut dimulai
-        self.empty_since     = {}   # Timestamp saat zona kosong berturut-turut dimulai
-        self.last_seen       = {}   # Timestamp deteksi terakhir (untuk toleransi miss)
+        self.occupied_since  = defaultdict(lambda: None)
+        self.empty_since     = defaultdict(lambda: None)
+        self.last_seen       = defaultdict(lambda: None)
 
-        self.status          = {}
-        self.away_start_time = {}
-        self.matched_bbox    = {}
+        self.status          = defaultdict(lambda: "TIDAK_DI_TEMPAT")
+        self.away_start_time = defaultdict(lambda: None)
+        self.matched_bbox    = defaultdict(lambda: None)
         self.frame_count     = 0
 
+        self.verified_identity_cache = defaultdict(lambda: None)
+        self.last_identity_check_time = defaultdict(lambda: 0.0)
+        self.total_occupied_seconds = defaultdict(lambda: 0.0)
+        self.total_away_seconds = defaultdict(lambda: 0.0)
+
         # Structure untuk Zone Lock berbasis track_id & logging switch assignment
-        self.track_lock_frames     = {}  # track_id -> jumlah frame berturut-turut di zona yang sama
-        self.track_current_zone    = {}  # track_id -> zone_id saat ini
-        self.prev_zone_assignments = {}  # zone_id -> track_id pada frame sebelumnya
+        self.track_lock_frames     = {}
+        self.track_current_zone    = {}
+        self.prev_zone_assignments = {}
 
     def update_config(self, config: dict):
         self.iou_threshold = float(config.get("iou_threshold", 0.08))
@@ -106,13 +112,9 @@ class RuleZonePresence:
         self.prev_zone_assignments.clear()
         self.verified_identity_cache.clear()
         self.last_identity_check_time.clear()
-        self.total_occupied_seconds = {}
-        self.total_away_seconds = {}
+        self.total_occupied_seconds.clear()
+        self.total_away_seconds.clear()
         self.frame_count = 0
-        for z in self.chair_zones:
-            zid = z.get("id")
-            if zid:
-                self.status[zid] = "TIDAK_DI_TEMPAT"
 
     def process(self, frame, detections: list, current_time: float = None, face_recognizer = None):
         """
