@@ -38,4 +38,4 @@ Route::prefix('admin')->group(function () {
 });
 
 // 5. WhatsApp Gateway Webhook & Test API
-Route::post('/api/whatsapp/webhook', [App\Http\Controllers\WhatsAppWebhookController::class, 'handle'])->name('whatsapp.webhook');
+Route::match(['get', 'post'], '/api/whatsapp/webhook', [App\Http\Controllers\WhatsAppWebhookController::class, 'handle'])->name('whatsapp.webhook');

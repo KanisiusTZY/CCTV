@@ -21,10 +21,19 @@ class WhatsAppWebhookController extends Controller
 
     /**
      * Endpoint Webhook yang menerima chat masuk dari WhatsApp (Fonnte)
+     * Mendukung GET (verifikasi Fonnte) dan POST (incoming messages)
      */
     public function handle(Request $request): JsonResponse
     {
-        // Tangkap parameter dari webhook Fonnte
+        // 1. Tangani verifikasi awal dari Fonnte via GET
+        if ($request->isMethod('get')) {
+            return response()->json([
+                'status' => true,
+                'message' => 'Fonnte Webhook URL is Active & Ready',
+            ]);
+        }
+
+        // 2. Tangani pesan chat masuk via POST
         $sender = $request->input('sender') ?? $request->input('from');
         $message = $request->input('message') ?? $request->input('text');
         $name = $request->input('name') ?? '';
@@ -38,7 +47,7 @@ class WhatsAppWebhookController extends Controller
             ]);
         }
 
-        // Jangan proses jika pesan berasal dari bot sendiri atau broadcast status
+        // Jangan proses jika pesan berasal dari template peringatan sistem sendiri
         if (str_contains(strtolower($message), 'peringatan monitoring presensi cctv')) {
             return response()->json(['status' => true]);
         }
@@ -46,7 +55,7 @@ class WhatsAppWebhookController extends Controller
         // Tanyakan ke Gemini AI Assistant dengan konteks live CCTV
         $aiReply = $this->geminiService->askAssistant($message, $sender, $name);
 
-        // Kirim balasan ke WhatsApp pengirim
+        // Kirim balasan langsung ke WhatsApp pengirim via Fonnte
         $this->whatsAppService->sendMessage(
             $sender,
             $aiReply,
