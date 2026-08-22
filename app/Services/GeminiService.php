@@ -26,30 +26,53 @@ class GeminiService
             return "Maaf, integrasi AI belum dikonfigurasi (API Key Gemini belum diisi di .env).";
         }
 
-        // 1. Ambil data status real-time CCTV dari Python Engine
-        $cctvContext = $this->fetchCctvStatusSummary();
+        // 1. Ambil data karyawan & pemetaan meja dari database
+        $employees = Employee::all();
+        $employeeByZone = [];
+        $employeeLines = ["Daftar Pegawai Terdaftar:"];
+        $senderInfo = "";
 
-        // 2. Ambil data karyawan dari database
-        $employeeContext = $this->fetchEmployeeContext($senderNumber);
+        foreach ($employees as $emp) {
+            $zoneId = $emp->assigned_zone_id;
+            if (!empty($zoneId)) {
+                $employeeByZone[$zoneId] = $emp;
+            }
+            $employeeLines[] = "- {$emp->name} ({$emp->position}, Meja: " . ($zoneId ?: '-') . ", WA: {$emp->phone_number})";
 
-        // 3. Susun System Prompt (Kepribadian & Aturan Respon AI)
+            if (!empty($senderNumber) && !empty($emp->phone_number)) {
+                $cleanSender = preg_replace('/[^0-9]/', '', $senderNumber);
+                $cleanEmp = preg_replace('/[^0-9]/', '', $emp->phone_number);
+                if (str_ends_with($cleanSender, substr($cleanEmp, -8))) {
+                    $senderInfo = "Pengirim Chat Adalah: {$emp->name} ({$emp->position})";
+                }
+            }
+        }
+
+        // 2. Ambil status CCTV real-time dan gabungkan dengan nama pegawai pemilik meja
+        $cctvContext = $this->fetchCctvStatusSummary($employeeByZone);
+        $employeeContext = implode("\n", $employeeLines);
+        if (!empty($senderInfo)) {
+            $employeeContext .= "\n\n" . $senderInfo;
+        }
+
+        // 3. Susun System Prompt yang bersih
         $systemPrompt = <<<PROMPT
 Anda adalah "Pratama AI Assistant", asisten monitoring presensi CCTV resmi kantor Pratama TECH.
 Karakter Anda: Profesional, lugas, ringkas, informatif, dan tidak bertele-tele.
 
-DATA REAL-TIME CCTV DAN PEGAWAI:
+DATA REAL-TIME STATUS WORKSTATION MEJA CCTV SAAT INI:
 --------------------------------------------------
 {$cctvContext}
 
 {$employeeContext}
 --------------------------------------------------
 
-PEDOMAN GAYA BICARA & FORMAT JAWABAN:
+PEDOMAN JAWABAN:
 1. Gunakan Bahasa Indonesia yang baku, profesional, dan efisien.
-2. JANGAN menggunakan terlalu banyak emoji. Batasi penggunaan emoji seminimal mungkin (maksimal 1 emoji per pesan atau tidak sama sekali).
-3. Langsung jawab inti pertanyaan tanpa basa-basi pembuka/penutup yang panjang.
-4. Gunakan poin-poin sederhana jika menyajikan status banyak meja/pegawai agar mudah dibaca.
-5. Selalu gunakan data real-time di atas sebagai fakta utama status workstation.
+2. JANGAN menggunakan terlalu banyak emoji (maksimal 1 per pesan).
+3. Langsung jawab inti pertanyaan secara padat dan jelas.
+4. Sebutkan nama pegawai dan status mejanya berdasarkan data di atas (misal: "Gea di Meja 1 terpantau Bekerja").
+5. Jangan menyebut kata "Tidak Dikenal" jika meja tersebut sudah memiliki nama pegawai terdaftar.
 PROMPT;
 
         $modelsToTry = array_unique([$this->model, 'gemini-flash-latest', 'gemini-flash-lite-latest', 'gemini-3.6-flash']);
@@ -94,9 +117,9 @@ PROMPT;
     }
 
     /**
-     * Ambil ringkasan status zona dari Python stream server
+     * Ambil ringkasan status zona dari Python stream server dan petakan ke nama pemilik meja
      */
-    protected function fetchCctvStatusSummary(): string
+    protected function fetchCctvStatusSummary(array $employeeByZone): string
     {
         try {
             $resp = Http::timeout(1)->get('http://127.0.0.1:5000/api/status');
@@ -105,20 +128,22 @@ PROMPT;
                 $totalOccupied = $data['total_occupied'] ?? 0;
                 $zones = $data['zones'] ?? [];
 
-                $summary = "Status Kamera: ONLINE (FPS: " . round($data['fps'] ?? 0, 1) . ")\n";
-                $summary .= "Total Orang Terdeteksi di Meja: {$totalOccupied}\nDetail Meja:\n";
+                $summary = "Status CCTV: ONLINE (FPS: " . round($data['fps'] ?? 0, 1) . ")\n";
+                $summary .= "Total Pegawai Berada di Meja: {$totalOccupied}\n\nDetail Status Meja:\n";
 
                 foreach ($zones as $zid => $zinfo) {
                     $status = $zinfo['status'] ?? 'TIDAK_DI_TEMPAT';
-                    $person = $zinfo['person_name'] ?? 'Tidak Dikenal';
                     $away = round($zinfo['away_duration_seconds'] ?? 0);
                     $presence = round($zinfo['presence_duration_seconds'] ?? 0);
 
-                    $summary .= "- Meja [{$zid}]: Status={$status}, Pegawai={$person}";
+                    $emp = $employeeByZone[$zid] ?? null;
+                    $empName = $emp ? $emp->name : "Meja Kosong / Belum Diatur";
+
+                    $summary .= "- {$zid} ({$empName}): ";
                     if ($status === 'BEKERJA') {
-                        $summary .= " (Bekerja: " . round($presence / 60, 1) . " menit)\n";
+                        $summary .= "BEKERJA DI MEJA (Durasi aktif: " . round($presence / 60, 1) . " menit)\n";
                     } else {
-                        $summary .= " (Tidak di meja: " . round($away / 60, 1) . " menit)\n";
+                        $summary .= "TIDAK DI TEMPAT (Meninggalkan meja: " . round($away / 60, 1) . " menit)\n";
                     }
                 }
 
@@ -128,38 +153,6 @@ PROMPT;
             // Stream server offline
         }
 
-        return "Status Kamera: Standby.";
-    }
-
-    /**
-     * Ambil konteks karyawan dari database
-     */
-    protected function fetchEmployeeContext(string $senderNumber): string
-    {
-        try {
-            $employees = Employee::all();
-            $lines = ["Daftar Pegawai:"];
-            $senderInfo = "";
-
-            foreach ($employees as $emp) {
-                $lines[] = "- {$emp->name} ({$emp->position}, Meja: " . ($emp->assigned_zone_id ?: '-') . ", WA: {$emp->phone_number})";
-
-                if (!empty($senderNumber) && !empty($emp->phone_number)) {
-                    $cleanSender = preg_replace('/[^0-9]/', '', $senderNumber);
-                    $cleanEmp = preg_replace('/[^0-9]/', '', $emp->phone_number);
-                    if (str_ends_with($cleanSender, substr($cleanEmp, -8))) {
-                        $senderInfo = "Pengirim Chat: {$emp->name} ({$emp->position})";
-                    }
-                }
-            }
-
-            if (!empty($senderInfo)) {
-                $lines[] = "\n" . $senderInfo;
-            }
-
-            return implode("\n", $lines);
-        } catch (\Throwable $e) {
-            return "Data pegawai: Standby.";
-        }
+        return "Status CCTV: Standby.";
     }
 }
