@@ -3,7 +3,7 @@
 @section('title', 'Laporan Rekapitulasi Presensi HRD - AI CCTV Monitor')
 
 @section('content')
-<div class="space-y-6">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
 
     <!-- Header Section -->
     <div class="glass-panel p-5 rounded-2xl border border-gray-800 flex flex-col md:flex-row items-center justify-between gap-4">

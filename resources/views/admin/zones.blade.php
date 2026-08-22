@@ -3,7 +3,7 @@
 @section('title', 'Kelola Zona Meja Kerja (Zone Drawer) - AI CCTV Monitor')
 
 @section('content')
-<div class="space-y-6">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
 
     <!-- Top Header -->
     <div class="glass-panel p-5 rounded-2xl border border-gray-800 flex flex-col md:flex-row items-center justify-between gap-4">
@@ -82,7 +82,7 @@
 
                 <!-- Bottom Helper Note -->
                 <div class="pt-3 border-t border-gray-800 text-[11px] text-gray-500">
-                    💡 <em>Klik "Simpan Semua Zona" setelah selesai agar AI Engine langsung membaca area baru.</em>
+                    Ã°Å¸â€™Â¡ <em>Klik "Simpan Semua Zona" setelah selesai agar AI Engine langsung membaca area baru.</em>
                 </div>
             </div>
         </div>
@@ -344,7 +344,7 @@
         const btn = document.getElementById('btnSave');
         const originalText = btn.innerHTML;
         btn.disabled = true;
-        btn.innerHTML = `<span class="animate-spin mr-1">⏳</span> Menyimpan...`;
+        btn.innerHTML = `<span class="animate-spin mr-1">Ã¢ÂÂ³</span> Menyimpan...`;
 
         try {
             const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
@@ -360,12 +360,12 @@
 
             const resData = await response.json();
             if (response.ok) {
-                alert('✅ ' + (resData.message || 'Zona meja berhasil disimpan!'));
+                alert('Ã¢Å“â€¦ ' + (resData.message || 'Zona meja berhasil disimpan!'));
             } else {
-                alert('❌ Gagal menyimpan zona: ' + (resData.message || 'Terjadi kesalahan'));
+                alert('Ã¢ÂÅ’ Gagal menyimpan zona: ' + (resData.message || 'Terjadi kesalahan'));
             }
         } catch (err) {
-            alert('❌ Gagal menghubungi server: ' + err.message);
+            alert('Ã¢ÂÅ’ Gagal menghubungi server: ' + err.message);
         } finally {
             btn.disabled = false;
             btn.innerHTML = originalText;

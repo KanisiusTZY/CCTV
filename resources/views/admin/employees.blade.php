@@ -3,7 +3,7 @@
 @section('title', 'Kelola Pegawai & Registrasi Wajah - AI CCTV Monitor')
 
 @section('content')
-<div class="space-y-6">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
 
     <!-- Top Header -->
     <div class="glass-panel p-5 rounded-2xl border border-gray-800 flex flex-col md:flex-row items-center justify-between gap-4">
@@ -38,7 +38,7 @@
     @if($errors->any())
         <div class="p-4 bg-rose-500/10 border border-rose-500/30 text-rose-400 rounded-xl text-xs space-y-1">
             @foreach($errors->all() as $error)
-                <p>• {{ $error }}</p>
+                <p>Ã¢â‚¬Â¢ {{ $error }}</p>
             @endforeach
         </div>
     @endif
@@ -239,7 +239,7 @@
             </div>
 
             <div>
-                <label class="text-xs text-indigo-300 font-semibold mb-1.5 block">📍 Pindahkan / Assign ke Meja Kerja:</label>
+                <label class="text-xs text-indigo-300 font-semibold mb-1.5 block">Ã°Å¸â€œÂ Pindahkan / Assign ke Meja Kerja:</label>
                 <select id="editZone" name="assigned_zone_id" class="w-full bg-gray-900 border border-indigo-500/50 text-white text-xs rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-400">
                     <option value="">-- Fleksibel / Belum Ditugaskan --</option>
                     @foreach($zones as $z)
