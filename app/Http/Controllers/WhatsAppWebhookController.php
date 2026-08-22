@@ -7,6 +7,7 @@ use App\Services\WhatsAppService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use App\Models\PresenceNotificationLog;
 
 class WhatsAppWebhookController extends Controller
 {
@@ -21,19 +22,18 @@ class WhatsAppWebhookController extends Controller
 
     /**
      * Endpoint Webhook yang menerima chat masuk dari WhatsApp (Fonnte)
-     * Mendukung GET (verifikasi Fonnte) dan POST (incoming messages)
      */
     public function handle(Request $request): JsonResponse
     {
-        // 1. Tangani verifikasi awal dari Fonnte via GET
+        // 1. Verifikasi GET dari Fonnte
         if ($request->isMethod('get')) {
             return response()->json([
                 'status' => true,
-                'message' => 'Fonnte Webhook URL is Active & Ready',
+                'message' => 'Fonnte Webhook Active',
             ]);
         }
 
-        // 2. Tangani pesan chat masuk via POST
+        // 2. Tangkap parameter webhook Fonnte
         $sender = $request->input('sender') ?? $request->input('from');
         $message = $request->input('message') ?? $request->input('text');
         $name = $request->input('name') ?? '';
@@ -43,30 +43,37 @@ class WhatsAppWebhookController extends Controller
         if (empty($sender) || empty($message)) {
             return response()->json([
                 'status' => false,
-                'message' => 'Missing sender or message',
+                'message' => 'No message or sender',
             ]);
         }
 
-        // Jangan proses jika pesan berasal dari template peringatan sistem sendiri
+        // Jangan proses jika pesan dari sistem sendiri
         if (str_contains(strtolower($message), 'peringatan monitoring presensi cctv')) {
             return response()->json(['status' => true]);
         }
 
-        // Tanyakan ke Gemini AI Assistant dengan konteks live CCTV
+        // Generate balasan cerdas dari Gemini 3.6 Flash
         $aiReply = $this->geminiService->askAssistant($message, $sender, $name);
 
-        // Kirim balasan langsung ke WhatsApp pengirim via Fonnte
-        $this->whatsAppService->sendMessage(
-            $sender,
-            $aiReply,
-            null,
-            null,
-            'GEMINI_AI_REPLY'
-        );
+        // Catat ke log database
+        PresenceNotificationLog::create([
+            'employee_id' => null,
+            'zone_id' => null,
+            'phone_number' => $sender,
+            'notification_type' => 'GEMINI_AI_REPLY',
+            'message' => $aiReply,
+            'status' => 'SENT',
+            'away_duration_minutes' => null,
+        ]);
 
+        // Kirim balasan via 2 jalur (Direct API Send + Webhook JSON Reply) agar terkirim 100%
+        $this->whatsAppService->sendMessage($sender, $aiReply, null, null, 'GEMINI_AI_REPLY');
+
+        // Format respon resmi Fonnte untuk auto-reply
         return response()->json([
-            'status' => true,
             'reply' => $aiReply,
+            'message' => $aiReply,
+            'status' => true,
         ]);
     }
 }
