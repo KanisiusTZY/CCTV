@@ -1,7 +1,9 @@
-import argparse
+﻿import argparse
 import cv2
 import json
+import numpy as np
 import os
+import re
 import sys
 import time
 import threading
@@ -50,46 +52,54 @@ detector = None
 face_recognizer = None
 rule_engine = None
 visualizer = None
-config_data = {}
 latest_frame = None
+latest_clean_frame = None
 latest_results = {}
 current_fps = 0.0
 is_running = True
+config_data = {}
 
 def load_config():
-    if not os.path.exists(CONFIG_PATH):
-        print(f"[ERROR] File konfigurasi '{CONFIG_PATH}' tidak ditemukan!")
-        sys.exit(1)
-    with open(CONFIG_PATH, "r") as f:
-        return json.load(f)
+    global config_data
+    if os.path.exists(CONFIG_PATH):
+        try:
+            with open(CONFIG_PATH, "r") as f:
+                config_data = json.load(f)
+                return config_data
+        except Exception as e:
+            print(f"[ERROR StreamServer] Gagal membaca {CONFIG_PATH}: {e}")
+    config_data = {"source": "f.mp4", "model_name": "yolo11n.pt", "confidence": 0.13, "imgsz": 640}
+    return config_data
 
 def init_engine(source_override=None):
-    global detector, face_recognizer, rule_engine, visualizer, config_data, current_source
+    global current_source, detector, face_recognizer, rule_engine, visualizer, config_data
     config_data = load_config()
-    current_source = source_override if source_override is not None else config_data.get("source", "video.mp4")
+    current_source = source_override if source_override is not None else config_data.get("source", "f.mp4")
     
-    chair_zones = config_data.get("chair_zones", [])
+    # Inisialisasi Detektor Person
+    model_name = config_data.get("model_name", "yolo11n.pt")
     detector = PersonDetector(
-        model_name=config_data.get("model_name", "yolo11n.pt"),
+        model_path=model_name,
         confidence=config_data.get("confidence", 0.13),
-        upper_body_ratio=config_data.get("upper_body_ratio", 0.5),
-        imgsz=config_data.get("imgsz", 640),
-        chair_zones=chair_zones
+        imgsz=config_data.get("imgsz", 640)
     )
+    
+    # Inisialisasi Face Recognition Module
     face_cfg = config_data.get("face_recognition", {})
     face_model = face_cfg.get("model_name", "buffalo_s")
-    face_thresh = face_cfg.get("similarity_threshold", 0.40)
+    face_thresh = face_cfg.get("similarity_threshold", 0.28)
     use_gpu = face_cfg.get("use_gpu", False)
     try:
         face_recognizer = FaceRecognizerModule("faces_db", model_name=face_model, similarity_threshold=face_thresh, use_gpu=use_gpu)
     except Exception:
         face_recognizer = FaceRecognizerModule("faces_db")
+        
     rule_engine = RuleZonePresence(config_data)
     visualizer = Visualizer()
-    print(f"[INFO StreamServer] Engine diinisialisasi dengan source: {current_source} | Model: {config_data.get('model_name', 'yolo11n.pt')} | ImgSz: {config_data.get('imgsz', 640)}")
+    print(f"[INFO StreamServer] Engine diinisialisasi dengan source: {current_source} | Model: {model_name}")
 
 def video_processing_thread():
-    global latest_frame, latest_results, current_fps, is_running, current_source
+    global latest_frame, latest_clean_frame, latest_results, current_fps, is_running, current_source
     
     while is_running:
         cap_source = int(current_source) if str(current_source).isdigit() else current_source
@@ -98,8 +108,8 @@ def video_processing_thread():
             cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         
         if not cap.isOpened():
-            print(f"[ERROR StreamServer] Gagal membuka sumber video: {current_source}. Mencoba lagi dalam 3 detik...")
-            time.sleep(3)
+            print(f"[ERROR StreamServer] Gagal membuka sumber video: {current_source}. Mencoba lagi...")
+            time.sleep(2)
             continue
 
         fps_in = cap.get(cv2.CAP_PROP_FPS)
@@ -111,13 +121,15 @@ def video_processing_thread():
         
         print(f"[INFO StreamServer] Memulai pemrosesan stream dari: {current_source}")
 
+        cached_detections = []
+        cached_results = {}
+
         while is_running and cap.isOpened():
             loop_start = time.time()
             ret, frame = cap.read()
             if not ret or frame is None:
                 is_live = str(current_source).isdigit() or str(current_source).startswith("rtsp://") or str(current_source).startswith("http://")
                 if not is_live:
-                    # Reset video loop jika file mp4 habis (Tetap simpan akumulasi durasi presensi)
                     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                     frame_count = 0
                     continue
@@ -135,69 +147,109 @@ def video_processing_thread():
             is_live = str(current_source).isdigit() or str(current_source).startswith("rtsp://") or str(current_source).startswith("http://")
             simulated_time = curr_time if is_live else (frame_count / fps_in)
 
-            # Frame Skipping Optimization (Jalankan deteksi YOLO tiap 3 frame untuk kecepatan 3x lipat)
-            if frame_count % 3 == 1 or 'last_detections' not in locals():
-                last_detections = detector.detect(frame)
+            # Simpan frame bersih untuk snapshot Admin Zone Drawer
+            ret_clean_jpg, clean_jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
 
-            # Detect & Process
-            presence_results = rule_engine.process(frame, last_detections, current_time=simulated_time, face_recognizer=face_recognizer)
-            annotated_frame = visualizer.render(frame, presence_results, fps=current_fps)
+            # Frame Skipping (YOLO tiap 3 frame)
+            if frame_count % 3 == 0 or not cached_detections:
+                detections = detector.detect(frame)
+                cached_detections = detections
+                cached_results = rule_engine.process_frame(detections, simulated_time, frame=frame, face_recognizer=face_recognizer)
+            else:
+                detections = cached_detections
+                cached_results = rule_engine.process_frame(detections, simulated_time, frame=frame, face_recognizer=face_recognizer)
 
-            # Encode to JPEG for MJPEG stream
-            ret_jpg, jpeg = cv2.imencode('.jpg', annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
+            # Render Visualizer
+            annotated_frame = visualizer.draw(frame, cached_results, rule_engine.chair_zones, detections)
+            
+            # Watermark Info
+            bekerja_count = sum(1 for z in cached_results.values() if z.get("status") == "BEKERJA")
+            away_count = len(cached_results) - bekerja_count
+            cv2.putText(annotated_frame, f"BEKERJA: {bekerja_count}", (frame.shape[1] - 320, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 0), 2)
+            cv2.putText(annotated_frame, f"TIDAK DI TEMPAT: {away_count}", (frame.shape[1] - 180, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 255), 2)
+            cv2.putText(annotated_frame, f"FPS: {current_fps:.1f}", (frame.shape[1] - 80, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
+
+            ret_jpg, jpeg = cv2.imencode('.jpg', annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
             if ret_jpg:
                 with lock:
                     latest_frame = jpeg.tobytes()
-                    latest_results = presence_results
+                    if ret_clean_jpg:
+                        latest_clean_frame = clean_jpeg.tobytes()
+                    latest_results = cached_results
 
-            # Pacing Pengereman Halus untuk Mencegah CPU Overheat Thermal Throttling
+            # Sinkronisasi Kecepatan Video Lokal
             if not is_live:
-                target_frame_time = 1.0 / min(fps_in, 30.0)
-                elapsed = time.time() - loop_start
-                sleep_time = max(0.002, target_frame_time - elapsed)
-                time.sleep(sleep_time)
+                proc_time = time.time() - loop_start
+                target_frame_time = 1.0 / fps_in
+                if proc_time < target_frame_time:
+                    time.sleep(target_frame_time - proc_time)
 
         cap.release()
-        print(f"[INFO StreamServer] Stream dihentikan/di-reset.")
+        print(f"[INFO StreamServer] Stream selesai/terputus dari: {current_source}")
+        time.sleep(1)
 
 def generate_mjpeg_stream():
+    """Generator multipart MJPEG stream untuk tag <img> browser"""
     global latest_frame
     while is_running:
         with lock:
             if latest_frame is None:
-                time.sleep(0.05)
+                time.sleep(0.04)
                 continue
             frame_data = latest_frame
-
+        
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame_data + b'\r\n')
-        time.sleep(0.03)
+        time.sleep(0.033)
+
+@app.route('/health')
+@app.route('/healthz')
+def health_check():
+    return "OK", 200
 
 @app.route('/video_feed')
 def video_feed():
-    """Endpoint HTTP MJPEG Streaming untuk Browser & Laravel <img> tag"""
+    """Endpoint Stream Video MJPEG Real-Time"""
     return Response(generate_mjpeg_stream(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/api/snapshot')
+def api_snapshot():
+    """Endpoint untuk mengambil 1 frame gambar bersih (clean frame) untuk Admin Zone Drawer Canvas"""
+    with lock:
+        frame_bytes = latest_clean_frame if latest_clean_frame is not None else latest_frame
+        if frame_bytes is None:
+            # Fallback jika belum ada frame: buat gambar placeholder
+            blank = np.zeros((480, 640, 3), dtype=np.uint8)
+            cv2.putText(blank, "Menunggu Video Feed...", (180, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            _, jpeg = cv2.imencode('.jpg', blank)
+            frame_bytes = jpeg.tobytes()
+            
+    res = Response(frame_bytes, mimetype='image/jpeg')
+    res.headers.add("Access-Control-Allow-Origin", "*")
+    res.headers.add("Cache-Control", "no-cache, no-store, must-revalidate")
+    return res
 
 @app.route('/api/status')
 def api_status():
     """Endpoint REST API JSON untuk membaca status presensi real-time"""
     with lock:
-        bekerja_count = sum(1 for z in latest_results.values() if z.get("status") == "BEKERJA")
-        away_count = sum(1 for z in latest_results.values() if z.get("status") != "BEKERJA")
+        bekerja_count = sum(1 for z in latest_results.values() if z.get("status") == "BEKERJA") if latest_results else 0
+        away_count = sum(1 for z in latest_results.values() if z.get("status") != "BEKERJA") if latest_results else 0
         res = jsonify({
+            "status": "online" if latest_results else "initializing",
             "source": current_source,
             "fps": round(current_fps, 1),
             "total_bekerja": bekerja_count,
             "total_away": away_count,
-            "zones": latest_results
+            "zones": latest_results or {}
         })
         res.headers.add("Access-Control-Allow-Origin", "*")
-        return res
+        return res, 200
 
 @app.route('/api/set_source', methods=['POST', 'GET'])
 def api_set_source():
-    """Endpoint API untuk mengganti sumber video secara dinamis (misal dari Laravel)"""
+    """Endpoint API untuk mengganti sumber video secara dinamis"""
     global current_source, rule_engine
     new_src = request.args.get('source') or (request.json and request.json.get('source'))
     if not new_src:
@@ -205,125 +257,61 @@ def api_set_source():
     
     with lock:
         current_source = new_src
-        rule_engine.reset()
+        if rule_engine:
+            rule_engine.reset()
     
     return jsonify({
         "status": "success",
         "message": f"Sumber video berhasil diubah menjadi: {new_src}"
     })
 
+@app.route('/api/reload_zones', methods=['POST', 'GET'])
+def api_reload_zones():
+    """Endpoint API untuk memuat ulang daftar zona meja dari config.json secara dinamis"""
+    global rule_engine, config_data
+    with lock:
+        config_data = load_config()
+        if rule_engine:
+            rule_engine.chair_zones = config_data.get("chair_zones", [])
+            print(f"[INFO StreamServer] Reloaded {len(rule_engine.chair_zones)} zones from config.json")
+    
+    return jsonify({
+        "status": "success",
+        "message": f"Zona meja berhasil dimuat ulang! Total: {len(config_data.get('chair_zones', []))} zona",
+        "zones": config_data.get("chair_zones", [])
+    })
+
+@app.route('/api/reload_faces', methods=['POST', 'GET'])
+def api_reload_faces():
+    """Endpoint API untuk memuat ulang database wajah dari folder faces_db/ secara dinamis"""
+    global face_recognizer
+    count = 0
+    with lock:
+        if face_recognizer and hasattr(face_recognizer, 'reload_database'):
+            count = face_recognizer.reload_database()
+        elif face_recognizer and hasattr(face_recognizer, 'load_face_database'):
+            face_recognizer.known_face_embeddings = {}
+            face_recognizer.known_names = []
+            face_recognizer.load_face_database()
+            count = len(getattr(face_recognizer, 'known_face_embeddings', {}))
+    
+    return jsonify({
+        "status": "success",
+        "message": f"Database wajah berhasil di-reload! Total: {count} wajah terdaftar",
+        "count": count
+    })
+
 @app.route('/')
 def index():
-    """Dashboard Web HTML Sederhana untuk Testing Live Stream"""
-    html_content = """
-    <!DOCTYPE html>
-    <html lang="id">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Live Streaming Monitoring Kehadiran Pegawai</title>
-        <style>
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0f172a; color: #f8fafc; margin: 0; padding: 20px; }
-            .container { max-width: 1200px; margin: 0 auto; }
-            header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 15px; margin-bottom: 20px; }
-            h1 { font-size: 24px; color: #38bdf8; margin: 0; }
-            .main-content { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
-            .video-card { background: #1e293b; border-radius: 12px; padding: 15px; border: 1px solid #334155; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); }
-            .video-card img { width: 100%; height: auto; border-radius: 8px; display: block; }
-            .side-card { background: #1e293b; border-radius: 12px; padding: 20px; border: 1px solid #334155; }
-            .stat-box { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
-            .stat-card { background: #0f172a; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid #334155; }
-            .stat-val { font-size: 28px; font-weight: bold; }
-            .val-bekerja { color: #10b981; }
-            .val-away { color: #ef4444; }
-            .stat-lbl { font-size: 12px; color: #94a3b8; margin-top: 4px; }
-            .form-group { margin-bottom: 15px; }
-            label { display: block; font-size: 13px; color: #94a3b8; margin-bottom: 6px; }
-            input[type="text"] { width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #fff; box-sizing: border-box; }
-            button { width: 100%; padding: 10px; background: #0284c7; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.2s; }
-            button:hover { background: #0369a1; }
-            .zone-list { margin-top: 15px; max-height: 250px; overflow-y: auto; }
-            .zone-item { display: flex; justify-content: space-between; padding: 8px 12px; background: #0f172a; border-radius: 6px; margin-bottom: 6px; font-size: 13px; }
-            .badge { padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 11px; }
-            .badge-bekerja { background: #065f46; color: #34d399; }
-            .badge-away { background: #991b1b; color: #fca5a5; }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <header>
-                <h1>Sistem Monitoring Kehadiran Pegawai - Live Streaming</h1>
-                <div id="fps-badge" style="background:#0284c7; padding: 6px 12px; border-radius: 20px; font-size: 13px; font-weight: bold;">FPS: --</div>
-            </header>
-            
-            <div class="main-content">
-                <div class="video-card">
-                    <img src="/video_feed" alt="Live CCTV Monitoring Stream">
-                </div>
-                
-                <div class="side-card">
-                    <div class="stat-box">
-                        <div class="stat-card">
-                            <div class="stat-val val-bekerja" id="total-bekerja">0</div>
-                            <div class="stat-lbl">BEKERJA</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-val val-away" id="total-away">0</div>
-                            <div class="stat-lbl">TIDAK DI TEMPAT</div>
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="src-input">Ganti Sumber Video (File MP4 / RTSP URL / Webcam Index):</label>
-                        <input type="text" id="src-input" placeholder="misal: video.mp4 atau rtsp://..." value="{{ source }}">
-                        <button onclick="changeSource()" style="margin-top: 8px;">Terapkan Sumber Video</button>
-                    </div>
-
-                    <h3 style="font-size: 14px; color: #38bdf8; margin-top: 20px; margin-bottom: 10px;">Status Zona Meja Real-Time</h3>
-                    <div class="zone-list" id="zone-container">
-                        <!-- Statis item di-populate via JS -->
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <script>
-            function changeSource() {
-                const src = document.getElementById('src-input').value;
-                fetch('/api/set_source?source=' + encodeURIComponent(src))
-                    .then(res => res.json())
-                    .then(data => alert(data.message));
-            }
-
-            function updateStatus() {
-                fetch('/api/status')
-                    .then(res => res.json())
-                    .then(data => {
-                        document.getElementById('fps-badge').innerText = 'FPS: ' + data.fps;
-                        document.getElementById('total-bekerja').innerText = data.total_bekerja;
-                        document.getElementById('total-away').innerText = data.total_away;
-                        
-                        const container = document.getElementById('zone-container');
-                        container.innerHTML = '';
-                        for (const [zid, zdata] of Object.entries(data.zones)) {
-                            const isBekerja = zdata.status === 'BEKERJA';
-                            const item = document.createElement('div');
-                            item.className = 'zone-item';
-                            item.innerHTML = `
-                                <span><strong>${zid}</strong> ${zdata.track_id ? '(Track: ' + zdata.track_id + ')' : ''}</span>
-                                <span class="badge ${isBekerja ? 'badge-bekerja' : 'badge-away'}">${zdata.status}</span>
-                            `;
-                            container.appendChild(item);
-                        }
-                    });
-            }
-
-            setInterval(updateStatus, 1000);
-        </script>
-    </body>
-    </html>
-    """
-    return render_template_string(html_content, source=current_source)
+    return jsonify({
+        "name": "AI CCTV Workplace Monitoring API",
+        "status": "online",
+        "video_feed": "/video_feed",
+        "snapshot": "/api/snapshot",
+        "status_api": "/api/status",
+        "reload_zones": "/api/reload_zones",
+        "reload_faces": "/api/reload_faces"
+    })
 
 def main():
     parser = argparse.ArgumentParser(description="Live MJPEG Video Streamer & API Server")
@@ -333,15 +321,15 @@ def main():
 
     init_engine(args.source)
 
-    # Jalankan background thread pemrosesan video AI
     t = threading.Thread(target=video_processing_thread, daemon=True)
     t.start()
 
     print(f"\n" + "="*60)
     print(f" SERVER STREAMING & REST API MONITORING BERJALAN")
-    print(f" Web Dashboard : http://localhost:{args.port}")
+    print(f" Port HTTP     : {args.port}")
     print(f" Video Feed URL: http://localhost:{args.port}/video_feed")
-    print(f" REST API Status: http://localhost:{args.port}/api/status")
+    print(f" Snapshot URL  : http://localhost:{args.port}/api/snapshot")
+    print(f" REST API      : http://localhost:{args.port}/api/status")
     print("="*60 + "\n")
 
     app.run(host="0.0.0.0", port=args.port, debug=False, threaded=True)

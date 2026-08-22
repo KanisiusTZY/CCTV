@@ -24,10 +24,6 @@ class WorkstationZone extends Model
         'bbox_y2',
     ];
 
-    /**
-     * Memperbarui / Menambah zona meja kerja dari config.json secara otomatis (UPSERT)
-     * Tanpa menghapus data lama atau merusak relasi log presensi yang ada di DB.
-     */
     public static function syncFromConfig(array $chairZones)
     {
         foreach ($chairZones as $z) {
@@ -48,6 +44,11 @@ class WorkstationZone extends Model
                 ]
             );
         }
+    }
+
+    public function employee()
+    {
+        return $this->hasOne(Employee::class, 'assigned_zone_id', 'zone_id');
     }
 
     public function eventLogs()

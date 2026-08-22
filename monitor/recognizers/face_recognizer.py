@@ -1,4 +1,4 @@
-import os
+﻿import os
 import cv2
 import numpy as np
 
@@ -47,6 +47,15 @@ class InsightFaceRecognizer:
             self.app = None
 
         self.load_face_database()
+
+    def reload_database(self):
+        """
+        Reload embedding database saat ada penambahan/perubahan foto pegawai baru via Admin Web GUI.
+        """
+        self.known_face_embeddings = {}
+        self.known_names = []
+        self.load_face_database()
+        return len(self.known_face_embeddings)
 
     def load_face_database(self):
         """
@@ -113,7 +122,6 @@ class InsightFaceRecognizer:
             best_similarity = -1.0
 
             for name, db_embedding in self.known_face_embeddings.items():
-                # Cosine Similarity antara dua vektor L2-normalized: dot product
                 similarity = float(np.dot(query_embedding, db_embedding))
                 if similarity > best_similarity:
                     best_similarity = similarity
@@ -142,10 +150,9 @@ class InsightFaceRecognizer:
             box_w = x2 - x1
             box_h = y2 - y1
 
-            # Perlebar area crop kepala secara agresif agar wajah miring/samping tetap tercakup
-            pad_x = int(box_w * 0.35)  # Padding horizontal 35% (tangkap wajah miring)
-            pad_top = int(box_h * 0.3)  # Padding atas 30%
-            head_h = max(30, int(box_h * 0.75))  # Ambil 75% tinggi boks sebagai area kepala
+            pad_x = int(box_w * 0.35)
+            pad_top = int(box_h * 0.3)
+            head_h = max(30, int(box_h * 0.75))
 
             hx1 = max(0, x1 - pad_x)
             hy1 = max(0, y1 - pad_top)
