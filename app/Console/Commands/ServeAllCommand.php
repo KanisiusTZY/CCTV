@@ -8,83 +8,88 @@ use Symfony\Component\Process\Process;
 class ServeAllCommand extends Command
 {
     /**
-     * Nama perintah artisan yang dipanggil
+     * The name and signature of the console command.
+     *
+     * @var string
      */
-    protected $signature = 'monitor:start {--port=8000 : Port untuk web dashboard Laravel} {--python-port=5000 : Port untuk Python Stream Server}';
+    protected $signature = 'monitor:start 
+                            {--web-port=8000 : Port untuk web dashboard Laravel}
+                            {--python-port=5000 : Port untuk Python AI Stream Engine}
+                            {--wa-port=3000 : Port untuk Local WhatsApp Gateway}';
 
     /**
-     * Deskripsi perintah
+     * The console command description.
+     *
+     * @var string
      */
-    protected $description = 'Jalankan Laravel Web Dashboard & Python AI Stream Engine bersamaan (Matikan KEDUANYA dengan Ctrl+C)';
+    protected $description = 'Menjalankan Laravel Dashboard, Python AI CCTV Engine, dan WhatsApp Gateway secara bersamaan';
 
-    public function handle()
+    /**
+     * Execute the console command.
+     */
+    public function handle(): int
     {
-        $webPort = $this->option('port');
-        $pythonPort = $this->option('python-port');
+        $webPort = (int) $this->option('web-port');
+        $pythonPort = (int) $this->option('python-port');
+        $waPort = (int) $this->option('wa-port');
 
-        $this->info("=" . str_repeat("=", 58));
-        $this->info(" ðŸš€ MEMULAI SISTEM MONITORING KEHADIRAN PEGOWAI CCTV ");
-        $this->info("  - Web Dashboard : http://127.0.0.1:{$webPort}/dashboard");
-        $this->info("  - Python Stream : http://127.0.0.1:{$pythonPort}/video_feed");
-        $this->info(" Press Ctrl+C to STOP BOTH (Matikan Semua Server)");
-        $this->info("=" . str_repeat("=", 58) . "\n");
+        $this->info("========================================================");
+        $this->info("   ?? MEMULAI SISTEM MONITORING CCTV + AI + WHATSAPP   ");
+        $this->info("========================================================");
 
-        // 1. Cari file stream_server.py
-        $scriptPath = base_path('monitor/stream_server.py');
-        if (!file_exists($scriptPath)) {
-            $scriptPath = 'D:/MonitorKETUA/monitor/stream_server.py';
-        }
-        if (!file_exists($scriptPath)) {
-            $scriptPath = 'D:/monitor/stream_server.py';
-        }
-
-        // Cari lokasi python.exe
-        $pythonExec = 'python';
-        $possiblePythons = [
-            'C:\\Users\\USER\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe',
-            'python'
-        ];
-        foreach ($possiblePythons as $py) {
-            if (file_exists($py)) {
-                $pythonExec = $py;
-                break;
-            }
-        }
+        // 1. Jalankan Python AI Engine
+        $scriptPath = base_path('monitor' . DIRECTORY_SEPARATOR . 'stream_server.py');
+        $scriptDir = base_path('monitor');
 
         if (file_exists($scriptPath)) {
-            $scriptDir = dirname($scriptPath);
-            $normScriptPath = str_replace('/', '\\', $scriptPath);
-            $normScriptDir = str_replace('/', '\\', $scriptDir);
-
-            // Jalankan Python Stream Server secara independen di background (dengan -u unbuffered output)
+            $pythonExec = 'python';
             if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+                $normScriptPath = str_replace('/', '\\', $scriptPath);
+                $normScriptDir  = str_replace('/', '\\', $scriptDir);
                 pclose(popen("cd /d \"{$normScriptDir}\" && start /B \"\" \"{$pythonExec}\" -u \"{$normScriptPath}\" --port {$pythonPort}", "r"));
             } else {
                 exec("cd \"{$scriptDir}\" && python3 -u \"{$scriptPath}\" --port {$pythonPort} > /dev/null 2>&1 &");
             }
-            $this->info("[INFO] Python AI Engine dinyalakan pada port {$pythonPort} (Dir: {$scriptDir})...");
-        } else {
-            $this->warn("[PERINGATAN] File stream_server.py tidak ditemukan!");
+            $this->info("[1/3] Python AI Engine dinyalakan pada port {$pythonPort}...");
         }
 
-        // 2. Jalankan Laravel Serve dengan executable PHP aktif (PHP_BINARY)
+        // 2. Jalankan WhatsApp Baileys Gateway jika ada
+        $waPath = base_path('wa_gateway' . DIRECTORY_SEPARATOR . 'server.js');
+        $waDir = base_path('wa_gateway');
+        if (file_exists($waPath)) {
+            $nodeExec = file_exists('C:\\Program Files\\nodejs\\node.exe') ? 'C:\\Program Files\\nodejs\\node.exe' : 'node';
+            if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+                $normWaPath = str_replace('/', '\\', $waPath);
+                $normWaDir = str_replace('/', '\\', $waDir);
+                pclose(popen("cd /d \"{$normWaDir}\" && start /B \"\" \"{$nodeExec}\" \"{$normWaPath}\"", "r"));
+            } else {
+                exec("cd \"{$waDir}\" && node \"{$waPath}\" > /dev/null 2>&1 &");
+            }
+            $this->info("[2/3] WhatsApp Local Gateway dinyalakan pada port {$waPort} (Bebas Watermark)...");
+        }
+
+        // 3. Jalankan Laravel Serve
         $phpBinary = defined('PHP_BINARY') && PHP_BINARY ? PHP_BINARY : 'C:\xampp\php\php.exe';
         $laravelProc = new Process([$phpBinary, 'artisan', 'serve', "--port={$webPort}"]);
         $laravelProc->setTimeout(null);
         $laravelProc->start();
 
-        // 3. Tangkap shutdown hook agar saat Ctrl+C ditekan, KEDUANYA MATI BERSIH
+        $this->info("[3/3] Laravel Web Server dinyalakan pada http://127.0.0.1:{$webPort}...");
+        $this->newLine();
+        $this->info("? Sistem aktif! Tekan Ctrl + C untuk mematikan semua layanan.");
+        $this->newLine();
+
         $cleanup = function () use ($laravelProc) {
             $this->newLine();
-            $this->warn("[INFO] Menghentikan seluruh sistem (Laravel + Python AI Engine)...");
+            $this->warn("[INFO] Menghentikan seluruh sistem (Laravel + Python AI + WhatsApp)...");
 
             if ($laravelProc && $laravelProc->isRunning()) {
                 $laravelProc->stop(1);
             }
 
-            // Paksa matikan proses Python & PHP di Windows
             if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
                 exec('taskkill /F /IM python.exe 2>NUL');
+                exec('taskkill /F /IM node.exe 2>NUL');
             }
 
             $this->info("[BERSIH] Seluruh server berhasil dimatikan!");
@@ -100,9 +105,8 @@ class ServeAllCommand extends Command
         $lastAwayCheck = time();
         try {
             while ($laravelProc->isRunning()) {
-                usleep(500000); // Check loop tiap 0.5 detik
+                usleep(500000);
 
-                // Otomatis jalankan background checker durasi meninggalkan meja tiap 30 detik
                 if (time() - $lastAwayCheck >= 30) {
                     $lastAwayCheck = time();
                     try {
