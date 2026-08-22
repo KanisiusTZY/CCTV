@@ -6,7 +6,6 @@ class Visualizer:
     def __init__(self):
         self.color_bekerja  = (0, 220, 80)       # Hijau BGR (Bekerja / Ada Orang)
         self.color_away     = (0, 60, 220)       # Merah BGR (Kosong / Tidak di Tempat)
-        self.color_waiting  = (0, 180, 255)      # Oranye BGR (Akumulasi waktu masuk)
         self.font           = cv2.FONT_HERSHEY_SIMPLEX
 
     def format_duration(self, seconds: float) -> str:
@@ -18,9 +17,9 @@ class Visualizer:
 
     def render(self, frame, presence_results: dict, fps: float = 0.0):
         """
-        Merender visualisasi monitoring kehadiran standar (1 kotak per zona):
+        Merender visualisasi monitoring kehadiran standar:
         - KOTAK HIJAU : Zona terisi (BEKERJA / Ada Orang) dengan nama pegawai
-        - KOTAK MERAH (Fade In/Out Pulse): Zona kosong (Tidak di Tempat)
+        - KOTAK MERAH (Hanya Garis Tepi/Edge Fade In-Out): Zona kosong (Tidak di Tempat)
         """
         if frame is None:
             return frame
@@ -31,10 +30,9 @@ class Visualizer:
         total_bekerja = 0
         total_tidak   = 0
 
-        # Hitung faktor fade in / out (pulsing alpha 0.25 - 0.85) berdasarkan waktu
-        pulse_val = 0.5 + 0.5 * np.sin(time.time() * 3.0)  # Rentang 0.0 s.d. 1.0
-        pulse_alpha = 0.25 + 0.60 * pulse_val              # Alpha blending untuk fade in-out
-        pulse_color = (0, int(40 * (1 - pulse_val)), int(180 + 75 * pulse_val)) # Merah pulsing
+        # Hitung faktor fade in / out untuk garis tepi (alpha 0.3 s.d. 1.0)
+        pulse_val = 0.5 + 0.5 * np.sin(time.time() * 3.5)
+        pulse_alpha = 0.30 + 0.70 * pulse_val
 
         for zone_id, res in presence_results.items():
             status        = res["status"]
@@ -63,20 +61,18 @@ class Visualizer:
 
                 x1, y1, x2, y2 = [int(v) for v in draw_box]
 
-                # Efek Fade In / Fade Out menggunakan overlay transparan
+                # Hanya garis tepi (edges) + badge label dengan efek Fade In / Fade Out
                 overlay = output.copy()
-                # Kotak border merah pulsing
-                cv2.rectangle(overlay, (x1, y1), (x2, y2), pulse_color, 2)
-                # Background fill halus transparan di dalam area kursi yang kosong
-                cv2.rectangle(overlay, (x1, y1), (x2, y2), (0, 0, 180), -1)
+                # Garis tepi merah murni (ketebalan 2px, TANPA background fill)
+                cv2.rectangle(overlay, (x1, y1), (x2, y2), self.color_away, 2)
 
-                # Label "Tidak di Tempat"
+                # Badge label "Tidak di Tempat" di atas boks
                 (tw, th), baseline = cv2.getTextSize(display_label, self.font, 0.45, 1)
-                cv2.rectangle(overlay, (x1, max(0, y1 - th - 6)), (x1 + tw + 8, y1), pulse_color, -1)
+                cv2.rectangle(overlay, (x1, max(0, y1 - th - 6)), (x1 + tw + 8, y1), self.color_away, -1)
                 cv2.putText(overlay, display_label, (x1 + 4, max(12, y1 - 4)),
                             self.font, 0.45, (255, 255, 255), 1, cv2.LINE_AA)
 
-                # Blend overlay dengan frame asli (Fade in/out pulse)
+                # Alpha blend hanya pada garis tepi & label (fade in / out halus)
                 cv2.addWeighted(overlay, pulse_alpha, output, 1.0 - pulse_alpha, 0, output)
 
         # --- Bilah Informasi Atas (Top Info Bar) ---
