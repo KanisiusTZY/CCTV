@@ -97,9 +97,20 @@ class ServeAllCommand extends Command
             });
         }
 
+        $lastAwayCheck = time();
         try {
             while ($laravelProc->isRunning()) {
                 usleep(500000); // Check loop tiap 0.5 detik
+
+                // Otomatis jalankan background checker durasi meninggalkan meja tiap 30 detik
+                if (time() - $lastAwayCheck >= 30) {
+                    $lastAwayCheck = time();
+                    try {
+                        \Illuminate\Support\Facades\Artisan::call('presence:check-away');
+                    } catch (\Throwable $err) {
+                        // Ignored
+                    }
+                }
             }
         } catch (\Throwable $e) {
             // Intentionally blank

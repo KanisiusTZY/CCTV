@@ -146,20 +146,26 @@
                         <div class="min-w-0 flex-1">
                             <h4 class="text-xs font-bold text-white truncate">{{ $emp->name }}</h4>
                             <p class="text-[11px] text-gray-400 truncate">{{ $emp->position ?? 'Staff' }}</p>
-                            @if($emp->assigned_zone_id)
-                                <span class="inline-flex items-center gap-1 text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md mt-1 border border-emerald-500/20 font-medium">
-                                    📍 {{ $emp->zone->zone_name ?? $emp->assigned_zone_id }}
+                            <div class="flex flex-wrap gap-1 mt-1">
+                                @if($emp->assigned_zone_id)
+                                    <span class="inline-flex items-center gap-1 text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20 font-medium">
+                                        📍 {{ $emp->zone->zone_name ?? $emp->assigned_zone_id }}
+                                    </span>
+                                @endif
+                                @if($emp->phone_number)
+                                    <span class="inline-flex items-center gap-1 text-[10px] text-green-400 bg-green-500/10 px-1.5 py-0.5 rounded border border-green-500/20 font-mono">
+                                        📱 {{ $emp->phone_number }}
+                                    </span>
+                                @endif
+                                <span class="inline-flex items-center text-[10px] text-indigo-300 bg-indigo-500/10 px-1.5 py-0.5 rounded border border-indigo-500/20">
+                                    ⏱️ {{ $emp->max_away_minutes ?? 15 }}m
                                 </span>
-                            @else
-                                <span class="inline-flex items-center text-[10px] text-gray-500 bg-gray-800 px-2 py-0.5 rounded-md mt-1">
-                                    Belum ada meja
-                                </span>
-                            @endif
+                            </div>
                         </div>
                     </div>
 
                     <div class="flex items-center justify-end gap-1.5 pt-2 border-t border-gray-800/80">
-                        <button type="button" onclick="editEmployee({{ $emp->id }}, '{{ addslashes($emp->name) }}', '{{ addslashes($emp->position ?? '') }}', '{{ $emp->assigned_zone_id }}')" class="p-1.5 text-gray-400 hover:text-indigo-400 hover:bg-gray-800 rounded-lg transition" title="Edit Pegawai">
+                        <button type="button" onclick="editEmployee({{ $emp->id }}, '{{ addslashes($emp->name) }}', '{{ addslashes($emp->position ?? '') }}', '{{ $emp->assigned_zone_id }}', '{{ $emp->phone_number ?? '' }}', {{ $emp->max_away_minutes ?? 15 }})" class="p-1.5 text-gray-400 hover:text-indigo-400 hover:bg-gray-800 rounded-lg transition" title="Edit Pegawai">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
                         </button>
                         <form action="{{ route('admin.employees.destroy', $emp->id) }}" method="POST" onsubmit="return confirm('Hapus pegawai {{ $emp->name }}? Foto wajah di database AI juga akan terhapus.');">
@@ -203,19 +209,31 @@
                 <input type="text" name="name" id="empName" required placeholder="misal: Bili, Gea, Rangga, Bunga..." class="w-full bg-gray-950 border border-gray-700 text-white text-xs rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500">
             </div>
 
-            <div>
-                <label class="text-xs text-gray-400 mb-1 block">Posisi / Jabatan</label>
-                <input type="text" name="position" id="empPosition" placeholder="misal: Mobile Developer, Backend, HR..." class="w-full bg-gray-950 border border-gray-700 text-white text-xs rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500">
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="text-xs text-gray-400 mb-1 block">Posisi / Jabatan</label>
+                    <input type="text" name="position" id="empPosition" placeholder="misal: Staff IT" class="w-full bg-gray-950 border border-gray-700 text-white text-xs rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500">
+                </div>
+                <div>
+                    <label class="text-xs text-gray-400 mb-1 block">Nomor WhatsApp</label>
+                    <input type="text" name="phone_number" id="empPhone" placeholder="misal: 08123456789" class="w-full bg-gray-950 border border-gray-700 text-white text-xs rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500">
+                </div>
             </div>
 
-            <div>
-                <label class="text-xs text-gray-400 mb-1 block">Penempatan Meja Kerja</label>
-                <select name="assigned_zone_id" id="empZone" class="w-full bg-gray-950 border border-gray-700 text-white text-xs rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500">
-                    <option value="">-- Belum Ditugaskan / Fleksibel --</option>
-                    @foreach($zones as $z)
-                        <option value="{{ $z->zone_id }}">{{ $z->zone_name }} ({{ $z->zone_id }})</option>
-                    @endforeach
-                </select>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="text-xs text-gray-400 mb-1 block">Penempatan Meja</label>
+                    <select name="assigned_zone_id" id="empZone" class="w-full bg-gray-950 border border-gray-700 text-white text-xs rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500">
+                        <option value="">-- Fleksibel --</option>
+                        @foreach($zones as $z)
+                            <option value="{{ $z->zone_id }}">{{ $z->zone_name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="text-xs text-gray-400 mb-1 block">Batas Away (Menit)</label>
+                    <input type="number" name="max_away_minutes" id="empMaxAway" value="15" min="1" max="180" class="w-full bg-gray-950 border border-gray-700 text-white text-xs rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500">
+                </div>
             </div>
 
             <div>

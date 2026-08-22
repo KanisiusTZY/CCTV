@@ -36,3 +36,6 @@ Route::prefix('admin')->group(function () {
     Route::delete('/employees/{id}', [AdminEmployeeController::class, 'destroy'])->name('admin.employees.destroy');
     Route::post('/employees/reload-faces', [AdminEmployeeController::class, 'reloadFaceDb'])->name('admin.employees.reload');
 });
+
+// 5. WhatsApp Gateway Webhook & Test API
+Route::post('/api/whatsapp/webhook', [App\Http\Controllers\WhatsAppWebhookController::class, 'handle'])->name('whatsapp.webhook');

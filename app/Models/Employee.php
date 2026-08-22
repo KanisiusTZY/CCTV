@@ -16,10 +16,17 @@ class Employee extends Model
         'photo_filename',
         'assigned_zone_id',
         'position',
+        'phone_number',
+        'max_away_minutes',
     ];
 
     public function zone()
     {
         return $this->belongsTo(WorkstationZone::class, 'assigned_zone_id', 'zone_id');
+    }
+
+    public function notificationLogs()
+    {
+        return $this->hasMany(PresenceNotificationLog::class, 'employee_id');
     }
 }

@@ -17,10 +17,7 @@ class AdminEmployeeController extends Controller
      */
     public function index()
     {
-        $employees = Employee::with('zone')->orderBy('name', 'asc')->get();
-        $zones = WorkstationZone::all();
-
-        return view('admin.employees', compact('employees', 'zones'));
+        return redirect()->route('admin.zones');
     }
 
     /**
@@ -31,6 +28,8 @@ class AdminEmployeeController extends Controller
         $request->validate([
             'name' => 'required|string|max:100',
             'position' => 'nullable|string|max:100',
+            'phone_number' => 'nullable|string|max:50',
+            'max_away_minutes' => 'nullable|integer|min:1|max:180',
             'assigned_zone_id' => 'nullable|string|exists:workstation_zones,zone_id',
             'photo' => 'required|image|mimes:jpeg,png,jpg,webp|max:5120',
         ]);
@@ -61,6 +60,8 @@ class AdminEmployeeController extends Controller
         Employee::create([
             'name' => $name,
             'position' => $request->position,
+            'phone_number' => $request->phone_number,
+            'max_away_minutes' => $request->max_away_minutes ?: 15,
             'assigned_zone_id' => $request->assigned_zone_id,
             'photo_filename' => $cleanFilename,
         ]);
@@ -68,7 +69,7 @@ class AdminEmployeeController extends Controller
         // 4. Minta Python Engine Reload Wajah Live
         $this->notifyPythonReloadFaces();
 
-        return redirect()->route('admin.zones')->with('success', "Pegawai '{$name}' dan foto wajah berhasil didaftarkan ke AI Engine!");
+        return redirect()->route('admin.zones')->with('success', "Pegawai '{$name}' dan foto wajah AI berhasil didaftarkan!");
     }
 
     /**
@@ -81,14 +82,14 @@ class AdminEmployeeController extends Controller
         $request->validate([
             'name' => 'required|string|max:100',
             'position' => 'nullable|string|max:100',
+            'phone_number' => 'nullable|string|max:50',
+            'max_away_minutes' => 'nullable|integer|min:1|max:180',
             'assigned_zone_id' => 'nullable|string|exists:workstation_zones,zone_id',
             'photo' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:5120',
         ]);
 
         $name = trim($request->name);
-        $employee->name = $name;
-        $employee->position = $request->position;
-        $employee->assigned_zone_id = $request->assigned_zone_id;
+        $cleanFilename = $employee->photo_filename;
 
         if ($request->hasFile('photo')) {
             $cleanFilename = strtolower(preg_replace('/[^a-zA-Z0-9_-]/', '_', $name)) . '.jpeg';
@@ -105,38 +106,42 @@ class AdminEmployeeController extends Controller
                     File::copy($publicDir . '/' . $cleanFilename, $fDir . '/' . $cleanFilename);
                 }
             }
-
-            $employee->photo_filename = $cleanFilename;
         }
 
-        $employee->save();
+        $employee->update([
+            'name' => $name,
+            'position' => $request->position,
+            'phone_number' => $request->phone_number,
+            'max_away_minutes' => $request->max_away_minutes ?: 15,
+            'assigned_zone_id' => $request->assigned_zone_id,
+            'photo_filename' => $cleanFilename,
+        ]);
+
         $this->notifyPythonReloadFaces();
 
-        return redirect()->route('admin.zones')->with('success', "Data pegawai '{$name}' berhasil diperbarui.");
+        return redirect()->route('admin.zones')->with('success', "Data pegawai '{$name}' berhasil diperbarui!");
     }
 
     /**
-     * Hapus Pegawai & Foto Wajah
+     * Hapus Data Pegawai
      */
     public function destroy($id)
     {
         $employee = Employee::findOrFail($id);
         $name = $employee->name;
-        $filename = $employee->photo_filename;
 
-        if ($filename) {
-            $publicFile = public_path('uploads/employees/' . $filename);
-            if (File::exists($publicFile)) {
-                File::delete($publicFile);
+        // Hapus file foto
+        if ($employee->photo_filename) {
+            $publicPath = public_path('uploads/employees/' . $employee->photo_filename);
+            if (File::exists($publicPath)) {
+                File::delete($publicPath);
             }
 
-            $facesDbDirs = [
-                base_path('monitor/faces_db'),
-                'd:/monitor/faces_db'
+            $facesDbPaths = [
+                base_path('monitor/faces_db/' . $employee->photo_filename),
+                'd:/monitor/faces_db/' . $employee->photo_filename,
             ];
-
-            foreach ($facesDbDirs as $fDir) {
-                $fPath = $fDir . '/' . $filename;
+            foreach ($facesDbPaths as $fPath) {
                 if (File::exists($fPath)) {
                     File::delete($fPath);
                 }
@@ -146,28 +151,33 @@ class AdminEmployeeController extends Controller
         $employee->delete();
         $this->notifyPythonReloadFaces();
 
-        return redirect()->route('admin.zones')->with('success', "Pegawai '{$name}' dan foto wajah berhasil dihapus.");
+        return redirect()->route('admin.zones')->with('success', "Pegawai '{$name}' berhasil dihapus!");
     }
 
     /**
-     * Manual Trigger Reload Face Database
+     * Trigger Python Stream Server untuk Reload Faces Database
      */
     public function reloadFaceDb()
     {
-        $res = $this->notifyPythonReloadFaces();
-        return redirect()->route('admin.zones')->with('success', 'Database wajah AI berhasil dimuat ulang!');
+        $status = $this->notifyPythonReloadFaces();
+        if ($status['success']) {
+            return redirect()->route('admin.zones')->with('success', $status['message']);
+        } else {
+            return redirect()->route('admin.zones')->with('error', $status['message']);
+        }
     }
 
-    /**
-     * Helper POST ke Python /api/reload_faces
-     */
-    private function notifyPythonReloadFaces()
+    private function notifyPythonReloadFaces(): array
     {
         try {
-            $res = Http::timeout(3)->post($this->pythonApiUrl . '/api/reload_faces');
-            return $res->json();
-        } catch (\Exception $e) {
-            return null;
+            $response = Http::timeout(5)->post("{$this->pythonApiUrl}/api/reload_faces");
+            if ($response->successful()) {
+                $data = $response->json();
+                return ['success' => true, 'message' => "Database Wajah AI berhasil dimuat ulang! Terdaftar {$data['total_identities']} identitas: " . implode(', ', $data['identities'] ?? [])];
+            }
+            return ['success' => false, 'message' => "Gagal reload AI Face Engine (Response code: {$response->status()})"];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => "Python Stream Server tidak aktif di port 5000 (Foto tersimpan lokal)."];
         }
     }
 }
