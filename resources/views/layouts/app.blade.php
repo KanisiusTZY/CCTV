@@ -62,30 +62,25 @@
 </head>
 <body class="font-sans antialiased min-h-screen flex flex-col justify-between">
 
-    <!-- Top Navbar Header (Clean Template) -->
-    <header class="glass-panel sticky top-0 z-30 border-b border-gray-800 px-4 sm:px-6 py-3">
+    <!-- Top Navbar Header (Clean Template Sesuai Awal) -->
+    <header class="glass-panel sticky top-0 z-30 border-b border-gray-800 px-4 sm:px-6 py-3.5">
         <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
             
-            <!-- App Brand & Active Room Indicator -->
-            <div class="flex items-center gap-3">
-                <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20 shrink-0">
-                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <!-- App Brand & Title -->
+            <a href="{{ route('presence.dashboard') }}" class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20 shrink-0">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
                     </svg>
                 </div>
                 <div>
-                    <h1 class="font-bold text-sm sm:text-base text-white tracking-tight leading-tight">
+                    <h1 class="font-bold text-base sm:text-lg text-white tracking-tight leading-tight">
                         AI CCTV Workplace Monitor
                     </h1>
-                    <a href="{{ route('rooms.index') }}" class="text-[11px] text-indigo-400 hover:text-indigo-300 font-medium flex items-center gap-1.5 transition mt-0.5 group" title="Klik untuk ganti ruangan">
-                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                        <span class="group-hover:underline">{{ session('active_room_name', 'Ruang Kerja IT & Developer') }}</span>
-                        <span class="text-[10px] text-gray-500 group-hover:text-indigo-300">(Ganti)</span>
-                    </a>
                 </div>
-            </div>
+            </a>
 
-            <!-- Navigation Links Menu -->
+            <!-- Navigation Links Menu (Hanya 4 Menu Utama) -->
             <nav class="flex items-center gap-1.5 overflow-x-auto py-1">
                 <a href="{{ route('presence.dashboard') }}" class="nav-link {{ request()->routeIs('presence.dashboard') ? 'active' : '' }}">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
