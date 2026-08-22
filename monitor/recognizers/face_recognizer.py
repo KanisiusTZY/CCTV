@@ -137,11 +137,11 @@ class InsightFaceRecognizer:
             valid_faces = []
             for f in faces:
                 det_sc = getattr(f, "det_score", 1.0)
-                if det_sc < 0.50:
+                if det_sc < 0.35:
                     continue
                 if getattr(f, "kps", None) is not None and len(f.kps) >= 2:
                     eye_dist = float(np.linalg.norm(f.kps[0] - f.kps[1]))
-                    if eye_dist < 8.0:
+                    if eye_dist < 5.0:
                         continue
                 valid_faces.append(f)
 
@@ -164,7 +164,7 @@ class InsightFaceRecognizer:
             second_sim = sim_list[1][1] if len(sim_list) > 1 else 0.0
 
             # Margin check: Wajah asli memiliki selisih kemiripan jelas terhadap orang lain
-            if best_sim >= self.similarity_threshold and (best_sim - second_sim) >= 0.04:
+            if best_sim >= self.similarity_threshold and (best_sim - second_sim) >= 0.03:
                 confidence_pct = max(60.0, min(99.0, round(best_sim * 100.0)))
                 return best_name, confidence_pct
 
