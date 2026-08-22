@@ -359,6 +359,18 @@ class RuleZonePresence:
                       f"Identitas: {verified_name if verified_name else ('Pegawai' if curr_stat == 'BEKERJA' else 'Kosong')} | "
                       f"Candidate: conf={c_conf}, IoU={c_iou}, Cont={c_cont}")
 
+        # Uniqueness constraint: Satu orang tidak boleh muncul di 2 meja secara bersamaan
+        seen_identities = {}
+        for zid, res in results.items():
+            name = res.get("verified_employee_name")
+            if name:
+                if name in seen_identities:
+                    # Sudah terdeteksi di meja lain -> hilangkan duplikasi
+                    res["verified_employee_name"] = None
+                    self.verified_identity_cache[zid] = None
+                else:
+                    seen_identities[name] = zid
+
         if self.frame_count % 30 == 0:
             log_parts = []
             for zid, res in results.items():

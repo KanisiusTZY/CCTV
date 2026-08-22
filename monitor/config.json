@@ -1,72 +1,72 @@
 {
-  "source": "h.mp4",
-  "model_name": "yolo11n.pt",
-  "confidence": 0.13,
-  "imgsz": 640,
-  "upper_body_ratio": 0.5,
-  "iou_threshold": 0.2,
-  "enter_seconds": 0.2,
-  "exit_seconds": 0.5,
-  "miss_tolerance_seconds": 1,
-  "face_recognition": {
-    "model_name": "buffalo_s",
-    "similarity_threshold": 0.28,
-    "use_gpu": false
-  },
-  "chair_zones": [
-    {
-      "id": "chair_1",
-      "bbox": [
-        643,
-        135,
-        721,
-        253
-      ]
+    "source": "f.mp4",
+    "model_name": "yolo11n.pt",
+    "confidence": 0.13,
+    "imgsz": 640,
+    "upper_body_ratio": 0.5,
+    "iou_threshold": 0.2,
+    "enter_seconds": 0.2,
+    "exit_seconds": 0.5,
+    "miss_tolerance_seconds": 1,
+    "face_recognition": {
+        "model_name": "buffalo_s",
+        "similarity_threshold": 0.45,
+        "use_gpu": false
     },
-    {
-      "id": "chair_2",
-      "bbox": [
-        742,
-        259,
-        813,
-        370
-      ]
-    },
-    {
-      "id": "chair_3",
-      "bbox": [
-        727,
-        472,
-        809,
-        649
-      ]
-    },
-    {
-      "id": "chair_4",
-      "bbox": [
-        549,
-        320,
-        643,
-        487
-      ]
-    },
-    {
-      "id": "chair_5",
-      "bbox": [
-        483,
-        192,
-        576,
-        341
-      ]
-    },
-    {
-      "id": "chair_6",
-      "bbox": [
-        544,
-        4,
-        628,
-        158
-      ]
-    }
-  ]
+    "chair_zones": [
+        {
+            "id": "chair_1",
+            "bbox": [
+                320,
+                158,
+                408,
+                279
+            ]
+        },
+        {
+            "id": "chair_2",
+            "bbox": [
+                188,
+                133,
+                298,
+                231
+            ]
+        },
+        {
+            "id": "chair_3",
+            "bbox": [
+                443,
+                175,
+                525,
+                305
+            ]
+        },
+        {
+            "id": "chair_4",
+            "bbox": [
+                191,
+                317,
+                325,
+                433
+            ]
+        },
+        {
+            "id": "chair_5",
+            "bbox": [
+                105,
+                215,
+                196,
+                354
+            ]
+        },
+        {
+            "id": "chair_6",
+            "bbox": [
+                25,
+                188,
+                95,
+                297
+            ]
+        }
+    ]
 }
