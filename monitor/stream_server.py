@@ -66,6 +66,7 @@ app = Flask(__name__)
 latest_frame = None
 latest_clean_frame = None
 latest_results = {}
+latest_frame_seq = 0
 current_fps = 0.0
 is_running = True
 lock = threading.Lock()
@@ -122,7 +123,7 @@ def init_engine(source=None):
     print(f"[INFO StreamServer] Engine diinisialisasi dengan source: {current_source} | Model: {model_name}")
 
 def video_processing_thread():
-    global latest_frame, latest_clean_frame, latest_results, current_fps, is_running, current_source
+    global latest_frame, latest_clean_frame, latest_results, latest_frame_seq, current_fps, is_running, current_source
     
     while is_running:
         opened_source = current_source
