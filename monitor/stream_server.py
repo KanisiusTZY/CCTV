@@ -160,7 +160,7 @@ def video_processing_thread():
                 cached_results = rule_engine.process(frame, detections, current_time=simulated_time, face_recognizer=face_recognizer)
 
             # Render Visualizer
-            annotated_frame = visualizer.draw(frame, cached_results, rule_engine.chair_zones, detections)
+            annotated_frame = visualizer.render(frame, cached_results, fps=current_fps)
             
             # Watermark Info
             bekerja_count = sum(1 for z in cached_results.values() if z.get("status") == "BEKERJA")
