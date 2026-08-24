@@ -311,23 +311,27 @@ def api_reload_zones():
         "zones": config_data.get("chair_zones", [])
     })
 
+def _async_reload_faces():
+    global face_recognizer, lock
+    try:
+        if face_recognizer and hasattr(face_recognizer, 'reload_database'):
+            face_recognizer.reload_database()
+        elif face_recognizer and hasattr(face_recognizer, 'load_face_database'):
+            with lock:
+                face_recognizer.known_face_embeddings = {}
+            face_recognizer.load_face_database()
+        print("[INFO StreamServer] Face database reload completed asynchronously.")
+    except Exception as e:
+        print(f"[ERROR Async Reload Faces] {e}")
+
 @app.route('/api/reload_faces', methods=['POST', 'GET'])
 def api_reload_faces():
-    """Endpoint API untuk memuat ulang database wajah dari folder faces_db/ secara dinamis"""
-    global face_recognizer
-    count = 0
-    with lock:
-        if face_recognizer and hasattr(face_recognizer, 'reload_database'):
-            count = face_recognizer.reload_database()
-        elif face_recognizer and hasattr(face_recognizer, 'load_face_database'):
-            face_recognizer.known_face_embeddings = {}
-            face_recognizer.load_face_database()
-            count = len(face_recognizer.known_face_embeddings)
+    """Endpoint API untuk memuat ulang database wajah secara asynchronous (ultra cepat)"""
+    threading.Thread(target=_async_reload_faces, daemon=True).start()
     
     return jsonify({
         "status": "success",
-        "message": f"Database wajah berhasil di-reload! Total: {count} wajah terdaftar",
-        "count": count
+        "message": "Permintaan reload wajah diterima dan sedang diproses di background"
     })
 
 @app.route('/')
