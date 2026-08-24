@@ -185,7 +185,7 @@ def video_processing_thread():
             simulated_time = curr_time if is_live else (frame_count / fps_in)
 
             # Simpan frame bersih untuk snapshot Admin Zone Drawer
-            ret_clean_jpg, clean_jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            # Clean frame di-cache raw tanpa overhead encoding per-frame
 
             try:
                 # Frame Skipping (YOLO tiap 3 frame)
@@ -203,13 +203,12 @@ def video_processing_thread():
             # Render Visualizer
             annotated_frame = visualizer.render(frame, cached_results, fps=current_fps)
             
-            ret_jpg, jpeg = cv2.imencode('.jpg', annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
+            ret_jpg, jpeg = cv2.imencode('.jpg', annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
             if ret_jpg:
                 with lock:
                     latest_frame = jpeg.tobytes()
                     latest_frame_seq += 1
-                    if ret_clean_jpg:
-                        latest_clean_frame = clean_jpeg.tobytes()
+                    latest_clean_frame = frame
                     latest_results = cached_results
 
             # Sinkronisasi Kecepatan Video Lokal
@@ -250,14 +249,19 @@ def api_snapshot():
     """Mengambil 1 snapshot frame bersih CCTV (format JPEG) untuk keperluan Admin Zone Drawing"""
     global latest_clean_frame, latest_frame, lock
     with lock:
-        frame_bytes = latest_clean_frame if latest_clean_frame is not None else latest_frame
-    
-    if frame_bytes is None:
-        blank = np.zeros((480, 640, 3), dtype=np.uint8)
-        _, jpeg = cv2.imencode('.jpg', blank)
-        return Response(jpeg.tobytes(), mimetype='image/jpeg')
-    
-    return Response(frame_bytes, mimetype='image/jpeg')
+        if latest_clean_frame is not None:
+            if isinstance(latest_clean_frame, np.ndarray):
+                ret_jpg, snap_jpeg = cv2.imencode('.jpg', latest_clean_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                if ret_jpg:
+                    return Response(snap_jpeg.tobytes(), mimetype='image/jpeg')
+            elif isinstance(latest_clean_frame, (bytes, bytearray)):
+                return Response(latest_clean_frame, mimetype='image/jpeg')
+        if latest_frame is not None:
+            return Response(latest_frame, mimetype='image/jpeg')
+            
+    blank = np.zeros((480, 640, 3), dtype=np.uint8)
+    _, jpeg = cv2.imencode('.jpg', blank)
+    return Response(jpeg.tobytes(), mimetype='image/jpeg')
 
 @app.route('/api/status')
 def api_status():
