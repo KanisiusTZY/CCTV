@@ -60,16 +60,16 @@ class CheckAwayPresenceCommand extends Command
                             ->first();
 
                         if (!$lastAlert) {
-                            $this->warn("?? Pegawai '{$employee->name}' ({$zoneId}) telah meninggalkan meja selama {$awayMinutes} menit (Batas: {$maxMinutes}m). Mengirim WA...");
+                            $this->warn("[ALERT AWAY] Pegawai '{$employee->name}' ({$zoneId}) telah meninggalkan meja selama {$awayMinutes} menit (Batas: {$maxMinutes}m). Mengirim WA...");
                             
                             $sent = $whatsAppService->sendAwayAlert($employee, $zoneId, $awayMinutes, $maxMinutes);
                             if ($sent) {
-                                $this->info("? Notifikasi WhatsApp berhasil terkirim ke {$employee->name} ({$employee->phone_number})");
+                                $this->info("[SUKSES] Notifikasi WhatsApp berhasil terkirim ke {$employee->name} ({$employee->phone_number})");
                             } else {
-                                $this->error("? Gagal mengirim notifikasi WhatsApp ke {$employee->name}");
+                                $this->error("[GAGAL] Gagal mengirim notifikasi WhatsApp ke {$employee->name}");
                             }
                         } else {
-                            $this->line("?? Pegawai '{$employee->name}' melewati batas ({$awayMinutes}m), tetapi masih dalam masa cooldown notifikasi ({$cooldownMinutes}m).");
+                            $this->line("[ALERT AWAY] Pegawai '{$employee->name}' melewati batas ({$awayMinutes}m), tetapi masih dalam masa cooldown notifikasi ({$cooldownMinutes}m).");
                         }
                     }
                 }
