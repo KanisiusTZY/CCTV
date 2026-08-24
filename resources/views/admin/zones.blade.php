@@ -664,8 +664,19 @@
         document.getElementById('employeeModal').classList.remove('hidden');
     }
 
-    function editEmployee(id, name, position, zoneId) {
+    function editEmployee(id, name, position, zoneId, phone = '', maxAway = 15) {
         document.getElementById('modalTitle').innerText = `Edit Data Pegawai: ${name}`;
+        document.getElementById('formMethod').value = 'PUT';
+        document.getElementById('employeeForm').action = `/admin/employees/${id}`;
+        document.getElementById('empName').value = name;
+        document.getElementById('empPosition').value = position;
+        document.getElementById('empZone').value = zoneId || '';
+        document.getElementById('empPhone').value = phone || '';
+        document.getElementById('empMaxAway').value = maxAway || 15;
+        document.getElementById('photoRequired').style.display = 'none';
+        document.getElementById('empPhoto').required = false;
+        document.getElementById('employeeModal').classList.remove('hidden');
+    }`;
         document.getElementById('formMethod').value = 'PUT';
         document.getElementById('employeeForm').action = `/admin/employees/${id}`;
         document.getElementById('empName').value = name;
