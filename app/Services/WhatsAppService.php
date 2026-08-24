@@ -74,14 +74,13 @@ class WhatsAppService
         $jamSekarang = now()->format('H:i');
         $zoneLabel = str_replace(['zone_', 'chair_'], ['Meja ', 'Meja '], $zoneId);
 
-        $message = "?? *PERINGATAN MONITORING PRESENSI CCTV*\n\n"
+        $message = "[PERINGATAN MONITORING PRESENSI CCTV]\n\n"
                  . "Halo *{$employee->name}*,\n"
                  . "Sistem AI CCTV mendeteksi Anda telah meninggalkan meja kerja (*{$zoneLabel}*) selama *{$awayDurationMinutes} Menit* (Batas Toleransi: {$maxThresholdMinutes} Menit).\n\n"
-                 . "?? *Waktu Terdeteksi:* {$jamSekarang} WIB\n"
-                 . "?? *Posisi / Jabatan:* {$employee->position}\n\n"
-                 . "?? _Mohon untuk segera kembali ke workstation Anda. Jika sedang bertugas di luar atau ada urusan mendesak, silakan konfirmasi ke HRD / atasan._\n\n"
-                 . "?? _Pesan otomatis dikirim oleh AI CCTV Monitoring System._";
-
+                 . "Waktu Terdeteksi: {$jamSekarang} WIB\n"
+                 . "Posisi / Jabatan: {$employee->position}\n\n"
+                 . "Mohon untuk segera kembali ke workstation Anda. Jika sedang bertugas di luar atau ada urusan mendesak, silakan konfirmasi ke HRD / atasan.\n\n"
+                 . "Pesan otomatis dikirim oleh AI CCTV Monitoring System.";
         return $this->sendMessage(
             $employee->phone_number,
             $message,
