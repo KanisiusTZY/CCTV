@@ -34,7 +34,7 @@ class ServeAllCommand extends Command
         $waPort = (int) $this->option('wa-port');
 
         $this->info("========================================================");
-        $this->info("   ?? MEMULAI SISTEM MONITORING CCTV + AI + WHATSAPP   ");
+        $this->info("      MEMULAI SISTEM MONITORING CCTV + AI + WHATSAPP   ");
         $this->info("========================================================");
 
         // 1. Jalankan Python AI Engine
@@ -46,7 +46,7 @@ class ServeAllCommand extends Command
             if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
                 $normScriptPath = str_replace('/', '\\', $scriptPath);
                 $normScriptDir  = str_replace('/', '\\', $scriptDir);
-                pclose(popen("cd /d \"{$normScriptDir}\" && start /B \"\" \"{$pythonExec}\" -u \"{$normScriptPath}\" --port {$pythonPort}", "r"));
+                pclose(popen("cd /d \"{$normScriptDir}\" && start /B \"\" \"{$pythonExec}\" -u \"{$normScriptPath}\" --port {$pythonPort} > NUL 2>&1", "r"));
             } else {
                 exec("cd \"{$scriptDir}\" && python3 -u \"{$scriptPath}\" --port {$pythonPort} > /dev/null 2>&1 &");
             }
@@ -61,7 +61,7 @@ class ServeAllCommand extends Command
             if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
                 $normWaPath = str_replace('/', '\\', $waPath);
                 $normWaDir = str_replace('/', '\\', $waDir);
-                pclose(popen("cd /d \"{$normWaDir}\" && start /B \"\" \"{$nodeExec}\" \"{$normWaPath}\"", "r"));
+                pclose(popen("cd /d \"{$normWaDir}\" && start /B \"\" \"{$nodeExec}\" \"{$normWaPath}\" > NUL 2>&1", "r"));
             } else {
                 exec("cd \"{$waDir}\" && node \"{$waPath}\" > /dev/null 2>&1 &");
             }
@@ -76,7 +76,7 @@ class ServeAllCommand extends Command
 
         $this->info("[3/3] Laravel Web Server dinyalakan pada http://127.0.0.1:{$webPort}...");
         $this->newLine();
-        $this->info("? Sistem aktif! Tekan Ctrl + C untuk mematikan semua layanan.");
+        $this->info("Sistem aktif! Tekan Ctrl + C untuk mematikan semua layanan.");
         $this->newLine();
 
         $cleanup = function () use ($laravelProc) {

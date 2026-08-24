@@ -3,15 +3,27 @@ const {
     useMultiFileAuthState,
     DisconnectReason,
     fetchLatestBaileysVersion,
-    makeInMemoryStore,
     delay
 } = require("@whiskeysockets/baileys");
 const pino = require("pino");
 const qrcode = require("qrcode-terminal");
 const express = require("express");
 const cors = require("cors");
-const http = require("http");
 const path = require("path");
+
+// Cegah crash akibat EPIPE saat stdout tertutup di Windows background process
+if (process.stdout) {
+    process.stdout.on("error", (err) => { if (err.code === "EPIPE") return; });
+}
+if (process.stderr) {
+    process.stderr.on("error", (err) => { if (err.code === "EPIPE") return; });
+}
+process.on("uncaughtException", (err) => {
+    if (err.code === "EPIPE") return;
+    try {
+        console.error("[Uncaught Exception]", err);
+    } catch (e) {}
+});
 
 const app = express();
 app.use(express.json());
@@ -24,6 +36,14 @@ const LARAVEL_WEBHOOK = process.env.LARAVEL_WEBHOOK || "http://127.0.0.1:8000/ap
 let sock = null;
 let connectionState = "DISCONNECTED"; // DISCONNECTED | QR_READY | CONNECTED
 let lastQr = null;
+
+function safeLog(...args) {
+    try {
+        console.log(...args);
+    } catch (e) {
+        // Ignored if pipe is closed
+    }
+}
 
 // Format nomor Indonesia ke JID WhatsApp (e.g. 081234 -> 6281234@s.whatsapp.net)
 function formatJid(number) {
@@ -44,7 +64,7 @@ async function connectToWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState(authPath);
     const { version, isLatest } = await fetchLatestBaileysVersion();
 
-    console.log(`[Baileys] Inisialisasi WhatsApp Gateway (v${version.join(".")}, latest: ${isLatest})...`);
+    safeLog(`[Baileys] Inisialisasi WhatsApp Gateway (v${version.join(".")}, latest: ${isLatest})...`);
 
     sock = makeWASocket({
         version,
@@ -63,16 +83,18 @@ async function connectToWhatsApp() {
         if (qr) {
             lastQr = qr;
             connectionState = "QR_READY";
-            console.log("\n========================================================");
-            console.log("?? SILAKAN SCAN QR CODE INI DENGAN WHATSAPP ANDA:");
-            console.log("========================================================\n");
-            qrcode.generate(qr, { small: true });
-            console.log("\nBuka WhatsApp -> Perangkat Tertaut -> Tautkan Perangkat\n");
+            safeLog("\n========================================================");
+            safeLog("SILAKAN SCAN QR CODE INI DENGAN WHATSAPP ANDA:");
+            safeLog("========================================================\n");
+            try {
+                qrcode.generate(qr, { small: true });
+            } catch (e) {}
+            safeLog("\nBuka WhatsApp -> Perangkat Tertaut -> Tautkan Perangkat\n");
         }
 
         if (connection === "close") {
             const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
-            console.log(`[Baileys] Koneksi terputus. Alasan: ${lastDisconnect?.error?.message}. Reconnect: ${shouldReconnect}`);
+            safeLog(`[Baileys] Koneksi terputus. Reconnect: ${shouldReconnect}`);
             connectionState = "DISCONNECTED";
             if (shouldReconnect) {
                 setTimeout(connectToWhatsApp, 3000);
@@ -82,9 +104,9 @@ async function connectToWhatsApp() {
             lastQr = null;
             const userJid = sock.user?.id || "";
             const phone = userJid.split(":")[0] || userJid.split("@")[0];
-            console.log("\n========================================================");
-            console.log(`? [Baileys] WHATSAPP TERHUBUNG BERHASIL! (Nomor: ${phone})`);
-            console.log("========================================================\n");
+            safeLog("\n========================================================");
+            safeLog(`[Baileys] WHATSAPP TERHUBUNG BERHASIL! (Nomor: ${phone})`);
+            safeLog("========================================================\n");
         }
     });
 
@@ -97,7 +119,7 @@ async function connectToWhatsApp() {
 
             const remoteJid = msg.key.remoteJid;
             if (!remoteJid || remoteJid.includes("@g.us") || remoteJid === "status@broadcast") {
-                continue; // Hanya tangani chat personal (bukan grup/status)
+                continue;
             }
 
             const sender = remoteJid.replace("@s.whatsapp.net", "");
@@ -109,13 +131,11 @@ async function connectToWhatsApp() {
 
             if (!text || text.trim() === "") continue;
 
-            console.log(`[WA Masuk] Dari: ${sender} (${name}) | Pesan: "${text}"`);
+            safeLog(`[WA Masuk] Dari: ${sender} (${name}) | Pesan: "${text}"`);
 
             try {
-                // Tampilkan status mengetik di WhatsApp
                 await sock.sendPresenceUpdate("composing", remoteJid);
 
-                // Kirim pesan ke Webhook Laravel
                 const fetchRes = await fetch(LARAVEL_WEBHOOK, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -135,13 +155,15 @@ async function connectToWhatsApp() {
                     if (replyText && typeof replyText === "string") {
                         await delay(500);
                         await sock.sendMessage(remoteJid, { text: replyText }, { quoted: msg });
-                        console.log(`[WA Balas] Terkirim ke ${sender}: "${replyText.substring(0, 60)}..."`);
+                        safeLog(`[WA Balas] Terkirim ke ${sender}: "${replyText.substring(0, 60)}..."`);
                     }
                 }
             } catch (err) {
-                console.error("[Baileys Webhook Error]", err.message);
+                // Ignore error if webhook is offline
             } finally {
-                await sock.sendPresenceUpdate("paused", remoteJid);
+                try {
+                    await sock.sendPresenceUpdate("paused", remoteJid);
+                } catch (e) {}
             }
         }
     });
@@ -166,25 +188,24 @@ app.post("/send", async (req, res) => {
         }
 
         if (connectionState !== "CONNECTED" || !sock) {
-            return res.status(503).json({ status: false, message: "WhatsApp belum terhubung (Scan QR terlebih dahulu)" });
+            return res.status(503).json({ status: false, message: "WhatsApp belum terhubung" });
         }
 
         const jid = formatJid(target);
         await sock.sendMessage(jid, { text: message });
 
-        console.log(`[WA Keluar] Pesan notifikasi terkirim ke ${target}`);
+        safeLog(`[WA Keluar] Pesan notifikasi terkirim ke ${target}`);
         return res.json({
             status: true,
-            message: "Pesan berhasil terkirim tanpa watermark!",
+            message: "Pesan berhasil terkirim!",
             target: target
         });
     } catch (err) {
-        console.error("[Baileys Send Error]", err);
         return res.status(500).json({ status: false, error: err.message });
     }
 });
 
 app.listen(PORT, () => {
-    console.log(`[Baileys Server] REST API berjalan di http://localhost:${PORT}`);
+    safeLog(`[Baileys Server] REST API berjalan di http://localhost:${PORT}`);
     connectToWhatsApp();
 });
