@@ -658,7 +658,9 @@
         document.getElementById('employeeForm').action = '{{ route("admin.employees.store") }}';
         document.getElementById('empName').value = '';
         document.getElementById('empPosition').value = '';
+        document.getElementById('empPhone').value = '';
         document.getElementById('empZone').value = '';
+        document.getElementById('empMaxAway').value = 15;
         document.getElementById('photoRequired').style.display = 'inline';
         document.getElementById('empPhoto').required = true;
         document.getElementById('employeeModal').classList.remove('hidden');
@@ -673,15 +675,6 @@
         document.getElementById('empZone').value = zoneId || '';
         document.getElementById('empPhone').value = phone || '';
         document.getElementById('empMaxAway').value = maxAway || 15;
-        document.getElementById('photoRequired').style.display = 'none';
-        document.getElementById('empPhoto').required = false;
-        document.getElementById('employeeModal').classList.remove('hidden');
-    }`;
-        document.getElementById('formMethod').value = 'PUT';
-        document.getElementById('employeeForm').action = `/admin/employees/${id}`;
-        document.getElementById('empName').value = name;
-        document.getElementById('empPosition').value = position;
-        document.getElementById('empZone').value = zoneId || '';
         document.getElementById('photoRequired').style.display = 'none';
         document.getElementById('empPhoto').required = false;
         document.getElementById('employeeModal').classList.remove('hidden');
