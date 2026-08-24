@@ -147,6 +147,8 @@ def video_processing_thread():
         fps_in = cap.get(cv2.CAP_PROP_FPS)
         if fps_in <= 0 or fps_in > 60:
             fps_in = 25.0
+        if rule_engine:
+            rule_engine.set_fps(fps_in)
             
         frame_count = 0
         prev_time = time.time()
