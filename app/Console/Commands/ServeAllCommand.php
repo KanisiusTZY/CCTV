@@ -65,7 +65,7 @@ class ServeAllCommand extends Command
             } else {
                 exec("cd \"{$waDir}\" && node \"{$waPath}\" > /dev/null 2>&1 &");
             }
-            $this->info("[2/3] WhatsApp Local Gateway dinyalakan pada port {$waPort} (Bebas Watermark)...");
+            $this->info("[2/3] WhatsApp Local Gateway dinyalakan pada port {$waPort} ...");
         }
 
         // 3. Jalankan Laravel Serve

@@ -68,10 +68,11 @@
                 <!-- Video Screen Wrapper -->
                 <div id="videoContainer" class="relative aspect-video bg-black overflow-hidden flex items-center justify-center">
                     <img id="streamFeed" 
-                         src="http://localhost:5000/video_feed?t={{ time() }}" 
+                         src="http://127.0.0.1:5000/video_feed" 
                          alt="AI CCTV Stream Feed" 
                          class="w-full h-full object-contain"
-                         onerror="this.style.display='none'; document.getElementById('offlineOverlay').classList.remove('hidden');">
+                         onload="document.getElementById('offlineOverlay').classList.add('hidden'); this.style.display='block';"
+                         onerror="handleStreamError(this)">
                     
                     <div id="offlineOverlay" class="hidden absolute inset-0 bg-gray-950 flex flex-col items-center justify-center text-center p-6">
                         <div class="w-12 h-12 rounded-full bg-rose-500/10 border border-rose-500/20 flex items-center justify-center mb-3">
@@ -213,6 +214,20 @@
 
 @section('scripts')
 <script>
+
+    let streamRetryTimer = null;
+    function handleStreamError(imgElem) {
+        imgElem.style.display = 'none';
+        document.getElementById('offlineOverlay').classList.remove('hidden');
+        if (!streamRetryTimer) {
+            streamRetryTimer = setTimeout(() => {
+                streamRetryTimer = null;
+                const host = window.location.hostname || '127.0.0.1';
+                imgElem.src = `http://${host}:5000/video_feed?t=${Date.now()}`;
+            }, 2500);
+        }
+    }
+
     function updateClock() {
         const now = new Date();
         const str = now.toTimeString().split(' ')[0];
@@ -243,6 +258,18 @@
             const res = await fetch("{{ route('presence.live-status') }}");
             if (!res.ok) return;
             const data = await res.json();
+
+            if (data.status === 'online') {
+                const streamImg = document.getElementById('streamFeed');
+                const overlay = document.getElementById('offlineOverlay');
+                if (streamImg && streamImg.style.display === 'none') {
+                    const host = window.location.hostname || '127.0.0.1';
+                    streamImg.src = `http://${host}:5000/video_feed?t=${Date.now()}`;
+                    streamImg.style.display = 'block';
+                    if (overlay) overlay.classList.add('hidden');
+                }
+            }
+
 
             // Update Top Counters
             if (data.total_bekerja !== undefined) {

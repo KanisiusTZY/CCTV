@@ -1,4 +1,5 @@
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 import time
 import numpy as np
 
@@ -43,11 +44,7 @@ class RuleZonePresence:
     def __init__(self, config: dict, fps: float = 30.0):
         """
         State Machine Occupancy Deteksi Kehadiran Per-Zona (Independen dari Track ID).
-        
-        Smoothing & Debounce murni berbasis consecutive-frame per zona berdasarkan toleransi detik.
-        
-        :param config: Dictionary konfigurasi dari config.json
-        :param fps: FPS aktual video (default: 30.0)
+        Menggunakan Smart One-Shot Face Recognition dengan Round-Robin Throttling untuk performa 30 FPS.
         """
         self.fps = float(fps) if fps and fps > 0 else 30.0
         self.update_config(config)
@@ -65,9 +62,23 @@ class RuleZonePresence:
         self.last_process_time = None
         self.frame_count = 0
 
-        # Verifikasi Biometrik Wajah Independen Per-Zona
+        # Verifikasi Biometrik Wajah Asynchronous One-Shot
         self.verified_identity_cache = defaultdict(lambda: None)
-        self.last_identity_check_time = defaultdict(float)
+        self.last_global_face_check_time = 0.0
+        self.face_executor = ThreadPoolExecutor(max_workers=1)
+        self.is_checking_face = False
+
+    def _async_verify_worker(self, zone_id, frame_crop, face_recognizer):
+        """Worker thread latar belakang untuk memproses ArcFace tanpa membebani FPS utama"""
+        try:
+            v_name, v_conf = face_recognizer.verify_identity(frame_crop, [0, 0, frame_crop.shape[1], frame_crop.shape[0]])
+            if v_name:
+                self.verified_identity_cache[zone_id] = v_name
+                print(f"[FACE VERIFIED] Zona {zone_id} teridentifikasi sebagai: {v_name} (conf={v_conf:.1f}%)")
+        except Exception:
+            pass
+        finally:
+            self.is_checking_face = False
 
     def set_fps(self, fps: float):
         """Update FPS video aktual untuk kalkulasi dinamis ambang batas frame."""
@@ -78,8 +89,6 @@ class RuleZonePresence:
     def update_config(self, config: dict):
         """Memuat dan memperbarui konfigurasi parameter zona & toleransi."""
         self.iou_threshold = float(config.get("iou_threshold", 0.15))
-        
-        # Toleransi transisi dalam DETIK (bukan hardcode frame)
         self.enter_seconds = float(config.get("enter_seconds", 0.3))
         self.exit_seconds = float(config.get("exit_seconds", 0.5))
         self.chair_zones = config.get("chair_zones", [])
@@ -93,9 +102,7 @@ class RuleZonePresence:
 
     def _recalculate_threshold_frames(self):
         """Mengonversi toleransi detik ke jumlah frame berturut-turut sesuai FPS aktual."""
-        # Contoh: 0.3s * 30 fps = 9 frame
         self.enter_frames = max(1, int(round(self.enter_seconds * self.fps)))
-        # Contoh: 0.5s * 30 fps = 15 frame
         self.exit_frames = max(1, int(round(self.exit_seconds * self.fps)))
 
     def reset(self):
@@ -108,19 +115,14 @@ class RuleZonePresence:
         self.total_away_seconds.clear()
         self.away_start_time.clear()
         self.verified_identity_cache.clear()
-        self.last_identity_check_time.clear()
+        self.last_global_face_check_time = 0.0
+        self.is_checking_face = False
         self.last_process_time = None
         self.frame_count = 0
 
     def process(self, frame, detections: list, current_time: float = None, face_recognizer = None, fps: float = None):
         """
-        Mengevaluasi occupancy per zona murni dari deteksi per-frame (tanpa track ID).
-        
-        Alur:
-        1. Evaluasi overlap spasial tiap deteksi terhadap tiap zona kursi.
-        2. Tentukan sinyal mentah 'raw_occupied' (True/False) per zona.
-        3. Debounce & State Transition via consecutive frames counter.
-        4. Verifikasi biometrik wajah mandiri per interval waktu pada zona BEKERJA.
+        Mengevaluasi occupancy per zona murni dari deteksi per-frame secara asinkron.
         """
         if current_time is None:
             current_time = time.time()
@@ -130,7 +132,6 @@ class RuleZonePresence:
 
         self.frame_count += 1
 
-        # Hitung selisih waktu (dt) untuk akumulasi durasi presensi
         if self.last_process_time is not None:
             dt = max(0.0, min(1.0, current_time - self.last_process_time))
         else:
@@ -140,8 +141,7 @@ class RuleZonePresence:
         # -------------------------------------------------------------
         # 1. EVALUASI SPASIAL DETEKSI PER-FRAME MURNI TERHADAP ZONA
         # -------------------------------------------------------------
-        # Mencari deteksi terbaik yang overlap dengan tiap zona
-        zone_best_candidate = {} # zone_id -> (score, upper_body_bbox, full_body_bbox, conf)
+        zone_best_candidate = {}
 
         for det in detections:
             upper_body = det.get("upper_body_bbox")
@@ -156,7 +156,6 @@ class RuleZonePresence:
                 chair_bbox = zone["bbox"]
                 thresh     = self.zone_iou_threshold.get(zone_id, self.iou_threshold)
 
-                # Toleransi area zona kursi (expanded bounding box)
                 chair_h = max(20, chair_bbox[3] - chair_bbox[1])
                 target_zone_shape = [
                     max(0, chair_bbox[0] - 10),
@@ -168,7 +167,6 @@ class RuleZonePresence:
                 iou_upper, cont_upper, center_upper = compute_box_metrics(upper_body, target_zone_shape)
                 iou_full, cont_full, center_full    = compute_box_metrics(full_body, target_zone_shape)
 
-                # Cek kriteria overlap: IoU, Containment, atau Centroid
                 is_overlap = (
                     iou_upper >= thresh or 
                     iou_full >= thresh or 
@@ -193,6 +191,7 @@ class RuleZonePresence:
         # 2. STATE MACHINE & DEBOUNCE PER-ZONA (MURNI PER-FRAME)
         # -------------------------------------------------------------
         results = {}
+        unverified_occupied_zone = None
 
         for zone in self.chair_zones:
             zone_id = zone["id"]
@@ -206,51 +205,31 @@ class RuleZonePresence:
                 self.consecutive_empty[zone_id] = 0
                 _, best_upper, best_full, best_conf = zone_best_candidate[zone_id]
 
-                # Transisi ke BEKERJA jika occupied mencapai enter_frames berturut-turut
                 if self.consecutive_occupied[zone_id] >= self.enter_frames:
                     self.status[zone_id] = "BEKERJA"
                     self.matched_bbox[zone_id] = best_upper
                     self.away_start_time[zone_id] = None
                 elif prev_status == "BEKERJA":
-                    # Tetap BEKERJA selama masih occupied
                     self.matched_bbox[zone_id] = best_upper
 
             else:
                 self.consecutive_empty[zone_id] += 1
                 self.consecutive_occupied[zone_id] = 0
 
-                # Transisi ke TIDAK_DI_TEMPAT jika empty mencapai exit_frames berturut-turut
                 if self.consecutive_empty[zone_id] >= self.exit_frames:
                     self.status[zone_id] = "TIDAK_DI_TEMPAT"
                     self.matched_bbox[zone_id] = None
                     self.verified_identity_cache[zone_id] = None
-                    self.last_identity_check_time[zone_id] = 0.0
                     if self.away_start_time[zone_id] is None:
                         self.away_start_time[zone_id] = current_time
 
             curr_status = self.status[zone_id]
-
-            # Log transisi state jika ada perubahan status
-            if curr_status != prev_status:
-                print(f"[STATE TRANSITION] Frame {self.frame_count:4d} ({current_time:6.2f}s) | "
-                      f"Zona: {zone_id:7s} | Status: {prev_status:>15s} -> {curr_status:>15s} | "
-                      f"Consecutive Occupied: {self.consecutive_occupied[zone_id]} (req: {self.enter_frames}), "
-                      f"Consecutive Empty: {self.consecutive_empty[zone_id]} (req: {self.exit_frames})")
-
-            # -------------------------------------------------------------
-            # 3. VERIFIKASI BIOMETRIK WAJAH (INDEPENDEN DARI TRACK ID)
-            # -------------------------------------------------------------
             verified_name = self.verified_identity_cache[zone_id]
-            last_check = self.last_identity_check_time[zone_id]
 
-            if face_recognizer and curr_status == "BEKERJA" and self.matched_bbox[zone_id] is not None:
-                check_interval = 1.0 if verified_name is None else 8.0
-                if (current_time - last_check) > check_interval:
-                    self.last_identity_check_time[zone_id] = current_time
-                    v_name, v_conf = face_recognizer.verify_identity(frame, self.matched_bbox[zone_id])
-                    if v_name:
-                        verified_name = v_name
-                        self.verified_identity_cache[zone_id] = verified_name
+            # Cari 1 zona yang butuh verifikasi wajah
+            if curr_status == "BEKERJA" and verified_name is None and self.matched_bbox[zone_id] is not None:
+                if unverified_occupied_zone is None:
+                    unverified_occupied_zone = (zone_id, self.matched_bbox[zone_id])
 
             # Akumulasi durasi bekerja dan away
             if curr_status == "BEKERJA":
@@ -270,6 +249,27 @@ class RuleZonePresence:
                 "occupied_duration":       self.total_occupied_seconds[zone_id],
                 "empty_duration":          self.total_away_seconds[zone_id],
             }
+
+        # -------------------------------------------------------------
+        # 3. ROUND-ROBIN ASYNC FACE RECOGNITION (MAKS 1 ZONA / 0.5s)
+        # -------------------------------------------------------------
+        if current_time < self.last_global_face_check_time:
+            self.last_global_face_check_time = 0.0
+
+        if face_recognizer and unverified_occupied_zone is not None and not self.is_checking_face:
+            if (current_time - self.last_global_face_check_time) >= 0.5 or self.last_global_face_check_time == 0.0:
+                self.last_global_face_check_time = current_time
+                target_zid, target_bbox = unverified_occupied_zone
+                
+                x1, y1, x2, y2 = [int(v) for v in target_bbox]
+                h_f, w_f = frame.shape[:2]
+                pad_w = int((x2 - x1) * 0.20)
+                pad_h = int((y2 - y1) * 0.20)
+                crop = frame[max(0, y1 - pad_h):min(h_f, y2 + pad_h), max(0, x1 - pad_w):min(w_f, x2 + pad_w)].copy()
+                
+                if crop.size > 0:
+                    self.is_checking_face = True
+                    self.face_executor.submit(self._async_verify_worker, target_zid, crop, face_recognizer)
 
         # Uniqueness constraint: Satu identitas nama pegawai tidak boleh muncul di 2 meja berbeda
         seen_names = {}

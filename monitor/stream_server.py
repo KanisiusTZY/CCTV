@@ -60,6 +60,13 @@ except ImportError:
     FACE_RECOGNIZER_TYPE = "HaarCascade"
 
 app = Flask(__name__)
+@app.after_request
+def add_cors_headers(response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization'
+    response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,OPTIONS'
+    return response
+
 # CORS(app)
 
 # Global Variables untuk Sharing Stream
@@ -121,6 +128,16 @@ def init_engine(source=None):
     rule_engine = RuleZonePresence(config_data)
     visualizer = Visualizer()
     print(f"[INFO StreamServer] Engine diinisialisasi dengan source: {current_source} | Model: {model_name}")
+    # Inisialisasi frame placeholder loading agar browser langsung menerima response stream seketika
+    global latest_frame, latest_frame_seq
+    import numpy as np
+    blank_init = np.zeros((720, 1280, 3), dtype=np.uint8)
+    cv2.putText(blank_init, "SISTEM CCTV AI: MEMUAT MODEL (YOLO11 + INSIGHTFACE)...", (120, 360), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 230, 255), 2)
+    _, blank_jpeg = cv2.imencode('.jpg', blank_init, [cv2.IMWRITE_JPEG_QUALITY, 80])
+    latest_frame = blank_jpeg.tobytes()
+    latest_frame_seq = 1
+
+
 
 def video_processing_thread():
     global latest_frame, latest_clean_frame, latest_results, latest_frame_seq, current_fps, is_running, current_source
@@ -132,6 +149,9 @@ def video_processing_thread():
             if not os.path.isabs(cap_source):
                 monitor_dir = os.path.dirname(os.path.abspath(__file__))
                 candidate = os.path.join(monitor_dir, cap_source)
+                # Alias cerdas jika tertukar 1.mp4 dan l.mp4
+                if not os.path.exists(candidate) and cap_source == "1.mp4" and os.path.exists(os.path.join(monitor_dir, "l.mp4")):
+                    candidate = os.path.join(monitor_dir, "l.mp4")
                 if os.path.exists(candidate):
                     cap_source = candidate
 
@@ -164,10 +184,11 @@ def video_processing_thread():
                 print(f"[INFO StreamServer] Sumber video berganti: {opened_source} -> {current_source}. Memuat ulang VideoCapture...")
                 break
 
+            is_live = str(current_source).isdigit() or str(current_source).startswith("rtsp://") or str(current_source).startswith("http://")
+
             loop_start = time.time()
             ret, frame = cap.read()
             if not ret or frame is None:
-                is_live = str(current_source).isdigit() or str(current_source).startswith("rtsp://") or str(current_source).startswith("http://")
                 if not is_live:
                     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                     frame_count = 0
@@ -183,21 +204,15 @@ def video_processing_thread():
                 current_fps = 0.9 * current_fps + 0.1 * calc_fps if current_fps > 0 else calc_fps
             prev_time = curr_time
 
-            is_live = str(current_source).isdigit() or str(current_source).startswith("rtsp://") or str(current_source).startswith("http://")
-            simulated_time = curr_time if is_live else (frame_count / fps_in)
-
-            # Simpan frame bersih untuk snapshot Admin Zone Drawer
-            # Clean frame di-cache raw tanpa overhead encoding per-frame
+            # Menggunakan waktu asli jam dinding (Real Wall-Clock Time)
+            simulated_time = curr_time
 
             try:
-                # Frame Skipping (YOLO tiap 3 frame)
+                # Jalankan YOLO setiap 3 frame, frame lainnya pakai cache deteksi
                 if frame_count % 3 == 0 or not cached_detections:
-                    detections = detector.detect(frame)
-                    cached_detections = detections
-                    cached_results = rule_engine.process(frame, detections, current_time=simulated_time, face_recognizer=face_recognizer)
-                else:
-                    detections = cached_detections
-                    cached_results = rule_engine.process(frame, detections, current_time=simulated_time, face_recognizer=face_recognizer)
+                    cached_detections = detector.detect(frame)
+                
+                cached_results = rule_engine.process(frame, cached_detections, current_time=simulated_time, face_recognizer=face_recognizer)
             except Exception as e:
                 print(f"[ERROR StreamServer Loop] {e}")
                 cached_results = {}
@@ -226,25 +241,33 @@ def video_processing_thread():
 
 def generate_frames():
     """Generator Frame MJPEG untuk dikirim ke Browser via HTTP"""
-    global latest_frame, lock, is_running
-    last_sent = None
+    global latest_frame, latest_frame_seq, lock, is_running
+    last_seq = -1
     while is_running:
         with lock:
             frame_bytes = latest_frame
+            seq = latest_frame_seq
         
-        if frame_bytes is not None and frame_bytes != last_sent:
-            last_sent = frame_bytes
+        if frame_bytes is not None and seq != last_seq:
+            last_seq = seq
             try:
                 yield (b'--frame\r\n'
-                       b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+                       b'Content-Type: image/jpeg\r\n\r\n'
+                       + frame_bytes + b'\r\n')
+            except GeneratorExit:
+                break
             except Exception:
                 break
-        time.sleep(0.02)
+        time.sleep(0.015)
 
 @app.route('/video_feed')
 def video_feed():
     """Endpoint Stream Video MJPEG Real-time"""
-    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+    resp = Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+    resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+    resp.headers['Pragma'] = 'no-cache'
+    resp.headers['Access-Control-Allow-Origin'] = '*'
+    return resp
 
 @app.route('/api/snapshot')
 def api_snapshot():
@@ -360,6 +383,7 @@ def main():
 
     init_engine(args.source)
 
+    
     t = threading.Thread(target=video_processing_thread, daemon=True)
     t.start()
 

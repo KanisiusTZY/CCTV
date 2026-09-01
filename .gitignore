@@ -40,3 +40,7 @@ generate_progress_ppt.py
 
 # === Template folder ===
 Template/
+
+wa_gateway/node_modules/
+wa_gateway/auth_info_baileys/
+monitor/*.pdf
